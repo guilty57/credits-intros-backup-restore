@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>IntrosBackupReplacement</AssemblyName>
+    <RootNamespace>IntrosBackupReplacement</RootNamespace>
+    <!-- Emby loads plugins by copying the built DLL into its plugins folder;
+         it does not need the SDK reference DLLs alongside it. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="Configuration/configPage.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference DLLs pulled directly from the target Emby Server install
+         (Server 4.10.0.18). These are NOT redistributed - they must be
+         supplied locally in ./libs before building. -->
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>libs/MediaBrowser_Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>libs/MediaBrowser_Model.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>libs/MediaBrowser_Controller.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,47 @@
+<div data-role="page" class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button,emby-checkbox"
+     data-controller="__plugin/IntrosBackupReplacementConfigPage.js">
+    <div data-role="content">
+        <div class="content-primary">
+            <form class="introsBackupReplacementConfigForm">
+                <div class="verticalSection">
+                    <h2>Intro/Credits Backup & Restore</h2>
+                    <p>Backs up and restores intro/credits chapter markers as one JSON file per episode. Run the "Backup Intro/Credits Markers" and "Restore Intro/Credits Markers" tasks from Scheduled Tasks.</p>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtIntroBackupPath">Backup folder path</label>
+                    <div style="display:flex;align-items:center;gap:.5em;">
+                        <input id="txtIntroBackupPath" name="IntroBackupPath" type="text" is="emby-input" required style="flex-grow:1;" />
+                        <button
+                            type="button"
+                            is="paper-icon-button-light"
+                            id="btnBrowseIntroBackupPath"
+                            class="emby-input-iconbutton"
+                            title="Browse"><i class="md-icon">search</i></button>
+                    </div>
+                    <div class="fieldDescription">
+                        Folder where per-episode JSON (and optional NFO) backups are stored.
+                        Files are written flat here - no per-series subfolders.
+                    </div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkAlsoWriteNfo" name="AlsoWriteNfo" type="checkbox" is="emby-checkbox" />
+                        <span>Also write a companion .nfo file</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        If enabled, a matching .nfo file is written next to each JSON backup.
+                    </div>
+                </div>
+
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

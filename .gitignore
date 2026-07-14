@@ -1,0 +1,7 @@
+# Build output
+bin/
+obj/
+
+# Emby's own proprietary SDK DLLs - not ours to redistribute.
+# See README for how to obtain these from your own Emby install.
+libs/*.dll

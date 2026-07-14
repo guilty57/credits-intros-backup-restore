@@ -1,0 +1,3 @@
+Place your own MediaBrowser.Common.dll, MediaBrowser.Model.dll, and
+MediaBrowser.Controller.dll here before building - see the README for
+where to find these on your Emby Server install.
