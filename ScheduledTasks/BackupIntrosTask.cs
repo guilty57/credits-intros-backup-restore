@@ -50,14 +50,36 @@ namespace IntrosBackupReplacement.ScheduledTasks
         {
             var config = Plugin.Instance!.Configuration;
 
-            if (string.IsNullOrWhiteSpace(config.IntroBackupPath))
+            var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
+            var nfoUsesMediaFolder = config.SaveNfoToMediaFolder;
+
+            if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
             {
-                _logger.Warn("IntroBackupPath is not configured - skipping backup.");
+                _logger.Warn("JsonBackupPath is not configured and 'Save JSON to media folders' is off - skipping backup.");
                 return Task.CompletedTask;
             }
 
-            Directory.CreateDirectory(config.IntroBackupPath);
-            ArchiveAndClearExistingBackups(config.IntroBackupPath);
+            if (config.AlsoWriteNfo && !nfoUsesMediaFolder && string.IsNullOrWhiteSpace(config.NfoBackupPath))
+            {
+                _logger.Warn("NfoBackupPath is not configured and 'Save NFO to media folders' is off - NFO output will be skipped.");
+            }
+
+            // Archiving/clearing old backups only makes sense for a single
+            // centralized folder. When writing into media folders instead,
+            // each episode's file just gets overwritten in place - there's
+            // no one folder to archive-and-clear, and doing so per media
+            // folder would risk touching files that don't belong to us.
+            if (!jsonUsesMediaFolder)
+            {
+                Directory.CreateDirectory(config.JsonBackupPath);
+                ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
+            }
+
+            if (config.AlsoWriteNfo && !nfoUsesMediaFolder && !string.IsNullOrWhiteSpace(config.NfoBackupPath))
+            {
+                Directory.CreateDirectory(config.NfoBackupPath);
+                ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
+            }
 
             var query = new InternalItemsQuery
             {
@@ -101,15 +123,35 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     continue;
                 }
 
+                var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
                 var fileName = BuildFileName(backup);
-                var filePath = Path.Combine(config.IntroBackupPath, fileName);
 
-                var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, json);
+                var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
+                if (string.IsNullOrEmpty(jsonDir))
+                {
+                    _logger.Warn("Skipping {0} - could not determine a media folder for its JSON backup.", fileName);
+                }
+                else
+                {
+                    Directory.CreateDirectory(jsonDir);
+                    var jsonPath = Path.Combine(jsonDir, fileName);
+                    var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(jsonPath, json);
+                }
 
                 if (config.AlsoWriteNfo)
                 {
-                    WriteNfo(backup, Path.ChangeExtension(filePath, ".nfo"));
+                    var nfoDir = nfoUsesMediaFolder ? mediaFolder : config.NfoBackupPath;
+                    if (string.IsNullOrEmpty(nfoDir))
+                    {
+                        _logger.Warn("Skipping NFO for {0} - no destination folder available.", fileName);
+                    }
+                    else
+                    {
+                        Directory.CreateDirectory(nfoDir);
+                        var nfoPath = Path.Combine(nfoDir, Path.ChangeExtension(fileName, ".nfo"));
+                        WriteNfo(backup, nfoPath);
+                    }
                 }
             }
 
@@ -117,10 +159,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             return Task.CompletedTask;
         }
 
-        /// <summary>
-        /// Builds "{SeriesName} ({TvdbId}) S{SS}E{EE} - {EpisodeTitle}.json",
-        /// stripping characters that are invalid in file names.
-        /// </summary>
         // The characters below are invalid in Windows/SMB file names. We hard-code
         // this set instead of relying on Path.GetInvalidFileNameChars(), because
         // that method returns the HOST OS's invalid set - on Linux (where Emby
@@ -135,23 +173,22 @@ namespace IntrosBackupReplacement.ScheduledTasks
               '\u0018','\u0019','\u001A','\u001B','\u001C','\u001D','\u001E','\u001F' };
 
         /// <summary>
-        /// Zips any existing .json/.nfo backups (top-level only - the "archive"
-        /// subfolder itself is never included) into a timestamped archive under
-        /// IntroBackupPath/archive/, then deletes the originals so this run
-        /// starts from a clean folder instead of overwriting files in place.
+        /// Zips any existing files matching searchPattern (top-level only -
+        /// the "archive" subfolder itself is never included) into a
+        /// timestamped archive under {folder}/archive/, then deletes the
+        /// originals so this run starts clean instead of overwriting files
+        /// in place. Only used for centralized (non-media-folder) output.
         /// </summary>
-        private void ArchiveAndClearExistingBackups(string introBackupPath)
+        private void ArchiveAndClearExisting(string folder, string searchPattern)
         {
-            var existingFiles = Directory.GetFiles(introBackupPath, "*.json")
-                .Concat(Directory.GetFiles(introBackupPath, "*.nfo"))
-                .ToList();
+            var existingFiles = Directory.GetFiles(folder, searchPattern).ToList();
 
             if (existingFiles.Count == 0)
             {
                 return;
             }
 
-            var archiveDir = Path.Combine(introBackupPath, "archive");
+            var archiveDir = Path.Combine(folder, "archive");
             Directory.CreateDirectory(archiveDir);
 
             var zipPath = Path.Combine(archiveDir, $"backup-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
@@ -169,9 +206,13 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 File.Delete(file);
             }
 
-            _logger.Info("Archived {0} existing backup file(s) to {1} before running a fresh backup.", existingFiles.Count, zipPath);
+            _logger.Info("Archived {0} existing file(s) matching {1} to {2} before running a fresh backup.", existingFiles.Count, searchPattern, zipPath);
         }
 
+        /// <summary>
+        /// Builds "{SeriesName} ({TvdbId}) S{SS}E{EE} - {EpisodeTitle}.json",
+        /// stripping characters that are invalid in file names.
+        /// </summary>
         internal static string BuildFileName(EpisodeIntroBackup backup)
         {
             var tvdbPart = string.IsNullOrEmpty(backup.TvdbId) ? "unknown" : backup.TvdbId;

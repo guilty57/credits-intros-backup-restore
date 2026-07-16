@@ -44,59 +44,82 @@ namespace IntrosBackupReplacement.ScheduledTasks
         public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
             var config = Plugin.Instance!.Configuration;
+            var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
 
-            if (string.IsNullOrWhiteSpace(config.IntroBackupPath) || !Directory.Exists(config.IntroBackupPath))
+            if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
             {
-                _logger.Warn("IntroBackupPath is not configured or does not exist - skipping restore.");
+                _logger.Warn("JsonBackupPath is not configured and 'Save JSON to media folders' is off - skipping restore.");
                 return Task.CompletedTask;
             }
 
-            // Build a lookup of every episode in the library keyed by TvdbId+Season+Episode
-            // so we only need one library query instead of one per backup file.
+            if (!jsonUsesMediaFolder && !Directory.Exists(config.JsonBackupPath))
+            {
+                _logger.Warn("JsonBackupPath does not exist - skipping restore.");
+                return Task.CompletedTask;
+            }
+
             var query = new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { nameof(Episode) },
                 Recursive = true
             };
 
-            var episodesByKey = _libraryManager.GetItemList(query)
-                .OfType<Episode>()
-                .Where(e => e.ProviderIds.ContainsKey("Tvdb"))
-                .GroupBy(e => (e.ProviderIds["Tvdb"], e.ParentIndexNumber ?? 0, e.IndexNumber ?? 0))
-                .ToDictionary(g => g.Key, g => g.First());
-
-            var files = Directory.GetFiles(config.IntroBackupPath, "*.json");
-            var total = files.Length;
+            var episodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
+            var total = episodes.Count;
             var processed = 0;
             var restored = 0;
 
-            foreach (var file in files)
+            foreach (var episode in episodes)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 processed++;
                 progress.Report(100.0 * processed / Math.Max(total, 1));
 
+                var tvdbId = episode.ProviderIds.GetValueOrDefault("Tvdb");
+                if (string.IsNullOrEmpty(tvdbId))
+                {
+                    continue;
+                }
+
+                // Build the file name from this episode's own known metadata -
+                // if a backup exists, it will be sitting at exactly this name.
+                var expectedBackup = new EpisodeIntroBackup
+                {
+                    TvdbId = tvdbId,
+                    SeriesName = episode.SeriesName ?? "Unknown Series",
+                    SeasonNumber = episode.ParentIndexNumber ?? 0,
+                    EpisodeNumber = episode.IndexNumber ?? 0,
+                    EpisodeTitle = episode.Name ?? string.Empty
+                };
+                var fileName = BackupIntrosTask.BuildFileName(expectedBackup);
+
+                var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
+                var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
+                if (string.IsNullOrEmpty(jsonDir))
+                {
+                    continue;
+                }
+
+                var filePath = Path.Combine(jsonDir, fileName);
+                if (!File.Exists(filePath))
+                {
+                    continue;
+                }
+
                 EpisodeIntroBackup? backup;
                 try
                 {
-                    var json = File.ReadAllText(file);
+                    var json = File.ReadAllText(filePath);
                     backup = JsonSerializer.Deserialize<EpisodeIntroBackup>(json);
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error("Failed to parse backup file {0}: {1}", file, ex.Message);
+                    _logger.Error("Failed to parse backup file {0}: {1}", filePath, ex.Message);
                     continue;
                 }
 
-                if (backup == null || string.IsNullOrEmpty(backup.TvdbId))
+                if (backup == null)
                 {
-                    continue;
-                }
-
-                var key = (backup.TvdbId, backup.SeasonNumber, backup.EpisodeNumber);
-                if (!episodesByKey.TryGetValue(key, out var episode))
-                {
-                    _logger.Warn("No matching episode found for {0}", Path.GetFileName(file));
                     continue;
                 }
 
@@ -149,7 +172,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 restored++;
             }
 
-            _logger.Info("Intro/credits restore complete: {0} of {1} backup file(s) applied.", restored, total);
+            _logger.Info("Intro/credits restore complete: {0} of {1} episode(s) had a backup applied.", restored, total);
             return Task.CompletedTask;
         }
     }

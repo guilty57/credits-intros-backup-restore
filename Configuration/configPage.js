@@ -6,8 +6,11 @@ define([], function () {
     function loadConfig(view) {
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-            view.querySelector('#txtIntroBackupPath').value = config.IntroBackupPath || '';
+            view.querySelector('#txtJsonBackupPath').value = config.JsonBackupPath || '';
+            view.querySelector('#txtNfoBackupPath').value = config.NfoBackupPath || '';
             view.querySelector('#chkAlsoWriteNfo').checked = config.AlsoWriteNfo || false;
+            view.querySelector('#chkSaveJsonToMediaFolder').checked = config.SaveJsonToMediaFolder || false;
+            view.querySelector('#chkSaveNfoToMediaFolder').checked = config.SaveNfoToMediaFolder || false;
             Dashboard.hideLoadingMsg();
         });
     }
@@ -17,8 +20,11 @@ define([], function () {
 
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-            config.IntroBackupPath = view.querySelector('#txtIntroBackupPath').value;
+            config.JsonBackupPath = view.querySelector('#txtJsonBackupPath').value;
+            config.NfoBackupPath = view.querySelector('#txtNfoBackupPath').value;
             config.AlsoWriteNfo = view.querySelector('#chkAlsoWriteNfo').checked;
+            config.SaveJsonToMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
+            config.SaveNfoToMediaFolder = view.querySelector('#chkSaveNfoToMediaFolder').checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);
@@ -28,17 +34,17 @@ define([], function () {
         return false;
     }
 
-    function onBrowseClick(view) {
+    function onBrowseClick(view, inputSelector) {
         require(['directorybrowser'], function (directoryBrowser) {
             var picker = new directoryBrowser();
             picker.show({
-                path: view.querySelector('#txtIntroBackupPath').value,
+                path: view.querySelector(inputSelector).value,
                 network: false,
                 includeFiles: false,
                 includeDirectories: true,
                 callback: function (path) {
                     if (path) {
-                        view.querySelector('#txtIntroBackupPath').value = path;
+                        view.querySelector(inputSelector).value = path;
                     }
                     picker.close();
                 }
@@ -54,8 +60,11 @@ define([], function () {
             view.querySelector('.introsBackupReplacementConfigForm')
                 .addEventListener('submit', function (e) { return onSubmit(view, e); });
 
-            view.querySelector('#btnBrowseIntroBackupPath')
-                .addEventListener('click', function () { onBrowseClick(view); });
+            view.querySelector('#btnBrowseJsonBackupPath')
+                .addEventListener('click', function () { onBrowseClick(view, '#txtJsonBackupPath'); });
+
+            view.querySelector('#btnBrowseNfoBackupPath')
+                .addEventListener('click', function () { onBrowseClick(view, '#txtNfoBackupPath'); });
         });
 
         view.addEventListener('viewhide', function () {

@@ -10,19 +10,37 @@
                 </div>
 
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="txtIntroBackupPath">Backup folder path</label>
+                    <label class="inputLabel inputLabelUnfocused" for="txtJsonBackupPath">JSON backup path</label>
                     <div style="display:flex;align-items:center;gap:.5em;">
-                        <input id="txtIntroBackupPath" name="IntroBackupPath" type="text" is="emby-input" required style="flex-grow:1;" />
+                        <input id="txtJsonBackupPath" name="JsonBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
                         <button
                             type="button"
                             is="paper-icon-button-light"
-                            id="btnBrowseIntroBackupPath"
+                            id="btnBrowseJsonBackupPath"
                             class="emby-input-iconbutton"
                             title="Browse"><i class="md-icon">search</i></button>
                     </div>
                     <div class="fieldDescription">
-                        Folder where per-episode JSON (and optional NFO) backups are stored.
-                        Files are written flat here - no per-series subfolders.
+                        Folder where per-episode JSON backups are stored, flat (no per-series
+                        subfolders). Ignored if "Save JSON backup files to media folders" below is checked.
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtNfoBackupPath">NFO backup path</label>
+                    <div style="display:flex;align-items:center;gap:.5em;">
+                        <input id="txtNfoBackupPath" name="NfoBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
+                        <button
+                            type="button"
+                            is="paper-icon-button-light"
+                            id="btnBrowseNfoBackupPath"
+                            class="emby-input-iconbutton"
+                            title="Browse"><i class="md-icon">search</i></button>
+                    </div>
+                    <div class="fieldDescription">
+                        Folder where per-episode NFO backups are stored, flat (no per-series
+                        subfolders). Only used if "Also write a companion .nfo file" is checked
+                        below. Ignored if "Save NFO backup files to media folders" below is checked.
                     </div>
                 </div>
 
@@ -32,7 +50,33 @@
                         <span>Also write a companion .nfo file</span>
                     </label>
                     <div class="fieldDescription checkboxFieldDescription">
-                        If enabled, a matching .nfo file is written next to each JSON backup.
+                        If enabled, a matching .nfo file is written for each episode alongside its JSON backup.
+                    </div>
+                </div>
+
+                <div class="verticalSection">
+                    <h3>Extra options (these override the paths above)</h3>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkSaveJsonToMediaFolder" name="SaveJsonToMediaFolder" type="checkbox" is="emby-checkbox" />
+                        <span>Save JSON backup files to media folders</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        If enabled, each episode's JSON backup is written next to its video file
+                        instead of the JSON backup path above.
+                    </div>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkSaveNfoToMediaFolder" name="SaveNfoToMediaFolder" type="checkbox" is="emby-checkbox" />
+                        <span>Save NFO backup files to media folders</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        If enabled, each episode's NFO backup is written next to its video file
+                        instead of the NFO backup path above.
                     </div>
                 </div>
 
