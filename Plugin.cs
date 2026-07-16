@@ -38,7 +38,8 @@ namespace IntrosBackupReplacement
                 DisplayName = "Intro/Credits Backup & Restore",
                 EmbeddedResourcePath = string.Format("{0}.Configuration.configPage.html", GetType().Namespace),
                 EnableInMainMenu = true,
-                IsMainConfigPage = true
+                IsMainConfigPage = true,
+                MenuIcon = "cloud_upload"
             };
 
             yield return new PluginPageInfo
