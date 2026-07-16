@@ -52,16 +52,15 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
             var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
             var nfoUsesMediaFolder = config.SaveNfoToMediaFolder;
+            // NFO output is enabled simply by having a destination configured -
+            // either media-folder mode is on, or a central NfoBackupPath is set.
+            // No separate "also write NFO" toggle to keep in sync with these.
+            var writeNfo = nfoUsesMediaFolder || !string.IsNullOrWhiteSpace(config.NfoBackupPath);
 
             if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
             {
                 _logger.Warn("JsonBackupPath is not configured and 'Save JSON to media folders' is off - skipping backup.");
                 return Task.CompletedTask;
-            }
-
-            if (config.AlsoWriteNfo && !nfoUsesMediaFolder && string.IsNullOrWhiteSpace(config.NfoBackupPath))
-            {
-                _logger.Warn("NfoBackupPath is not configured and 'Save NFO to media folders' is off - NFO output will be skipped.");
             }
 
             // Archiving/clearing old backups only makes sense for a single
@@ -75,7 +74,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
             }
 
-            if (config.AlsoWriteNfo && !nfoUsesMediaFolder && !string.IsNullOrWhiteSpace(config.NfoBackupPath))
+            if (writeNfo && !nfoUsesMediaFolder)
             {
                 Directory.CreateDirectory(config.NfoBackupPath);
                 ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
@@ -139,7 +138,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     File.WriteAllText(jsonPath, json);
                 }
 
-                if (config.AlsoWriteNfo)
+                if (writeNfo)
                 {
                     var nfoDir = nfoUsesMediaFolder ? mediaFolder : config.NfoBackupPath;
                     if (string.IsNullOrEmpty(nfoDir))

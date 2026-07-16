@@ -8,7 +8,6 @@ define([], function () {
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             view.querySelector('#txtJsonBackupPath').value = config.JsonBackupPath || '';
             view.querySelector('#txtNfoBackupPath').value = config.NfoBackupPath || '';
-            view.querySelector('#chkAlsoWriteNfo').checked = config.AlsoWriteNfo || false;
             view.querySelector('#chkSaveJsonToMediaFolder').checked = config.SaveJsonToMediaFolder || false;
             view.querySelector('#chkSaveNfoToMediaFolder').checked = config.SaveNfoToMediaFolder || false;
             Dashboard.hideLoadingMsg();
@@ -22,7 +21,6 @@ define([], function () {
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             config.JsonBackupPath = view.querySelector('#txtJsonBackupPath').value;
             config.NfoBackupPath = view.querySelector('#txtNfoBackupPath').value;
-            config.AlsoWriteNfo = view.querySelector('#chkAlsoWriteNfo').checked;
             config.SaveJsonToMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
             config.SaveNfoToMediaFolder = view.querySelector('#chkSaveNfoToMediaFolder').checked;
 

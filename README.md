@@ -107,8 +107,7 @@ docker run --rm -v "$(pwd)":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet
 | Setting | Description |
 |---|---|
 | JSON backup path | Where per-episode JSON backups are written, flat (no per-series subfolders). Ignored if "Save JSON backup files to media folders" is checked. |
-| NFO backup path | Where per-episode NFO backups are written, flat. Only used if "Also write a companion .nfo file" is checked. Ignored if "Save NFO backup files to media folders" is checked. |
-| Also write a companion .nfo file | If enabled, writes a matching `.nfo` for each episode alongside its JSON backup. |
+| NFO backup path | Where per-episode NFO backups are written, flat. Leave empty (and the media-folder checkbox below unchecked) to skip NFO output entirely. |
 | Save JSON backup files to media folders | Overrides the JSON backup path - writes each episode's JSON next to its video file instead. |
 | Save NFO backup files to media folders | Overrides the NFO backup path - writes each episode's NFO next to its video file instead. |
 

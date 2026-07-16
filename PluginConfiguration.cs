@@ -12,15 +12,11 @@ namespace IntrosBackupReplacement
 
         /// <summary>
         /// Folder where per-episode NFO backups are stored (flat, no
-        /// per-series subfolders). Ignored if SaveNfoToMediaFolder is true
-        /// or if AlsoWriteNfo is false.
+        /// per-series subfolders). Ignored if SaveNfoToMediaFolder is true.
+        /// Leave this and SaveNfoToMediaFolder both empty/off to skip NFO
+        /// output entirely.
         /// </summary>
         public string NfoBackupPath { get; set; } = string.Empty;
-
-        /// <summary>
-        /// If true, also write a companion .nfo file for each episode.
-        /// </summary>
-        public bool AlsoWriteNfo { get; set; } = false;
 
         /// <summary>
         /// If true, write each episode's JSON backup into its own media
