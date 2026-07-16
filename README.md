@@ -118,6 +118,53 @@ or copy it elsewhere - useful if you rsync or share your library folders
 directly. Pick whichever fits your workflow; JSON and NFO can each be
 configured independently.
 
+## Permissions
+
+Whichever folder(s) you point this at - a central backup path or "next to
+the media" - the account **Emby Server itself runs as** needs write access
+there. This is an OS-level requirement, not something the plugin can work
+around, and it's the most common reason a backup run fails.
+
+**Symptom:** the "Backup Intro/Credits Markers" task fails, and Emby's log
+(Dashboard → Logs) shows something like:
+
+```
+System.UnauthorizedAccessException: Access to the path '...' is denied.
+ ---> System.IO.IOException: Permission denied
+```
+
+As of v1.1, a permission error in one folder no longer aborts the whole
+run - it's logged and that episode is skipped, with a summary count at the
+end. But you'll still want to fix the underlying permission so backups
+actually complete.
+
+**Fixing it - general Linux/Docker:**
+```bash
+sudo chown -R <emby-user>:<emby-group> /path/to/backup/folder
+sudo chmod -R 755 /path/to/backup/folder
+```
+Find out which user Emby actually runs as with `ps aux | grep -i emby`.
+
+**Fixing it - Synology (Btrfs volumes with ACLs):**
+Synology's Btrfs volumes use ACLs that can override what `ls -la` appears
+to show (look for a `+` after the permission bits, e.g. `drwxrwxrwx+` -
+that `+` means ACL rules are in effect and may silently override the
+visible Unix permissions). `chown`/`chmod` alone often isn't enough here.
+Grant the plugin's account an explicit ACL entry instead:
+```bash
+sudo synoacltool -add /volume1/your/share "user:emby:allow:rwxpdDaARWcCo:fd"
+```
+If the folder already existed before you added the rule, force the new
+rule to apply to existing subfolders/files too:
+```bash
+sudo synoacltool -enforce-inherit /volume1/your/share/existing-subfolder
+```
+Replace `emby` with whatever account your Emby install actually runs as
+(check with `ps aux | grep -i emby`) and adjust the path to whichever
+folder is failing - this applies equally to a central backup path and to
+your actual media library folders if you're using the "save to media
+folders" option.
+
 ## Why this exists
 
 The original commercial "Intros Backup/Restore" plugin this replaces has

@@ -63,21 +63,26 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 return Task.CompletedTask;
             }
 
-            // Archiving/clearing old backups only makes sense for a single
-            // centralized folder. When writing into media folders instead,
-            // each episode's file just gets overwritten in place - there's
-            // no one folder to archive-and-clear, and doing so per media
-            // folder would risk touching files that don't belong to us.
-            if (!jsonUsesMediaFolder)
+            try
             {
-                Directory.CreateDirectory(config.JsonBackupPath);
-                ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
-            }
+                if (!jsonUsesMediaFolder)
+                {
+                    Directory.CreateDirectory(config.JsonBackupPath);
+                    ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
+                }
 
-            if (writeNfo && !nfoUsesMediaFolder)
+                if (writeNfo && !nfoUsesMediaFolder)
+                {
+                    Directory.CreateDirectory(config.NfoBackupPath);
+                    ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                Directory.CreateDirectory(config.NfoBackupPath);
-                ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
+                _logger.Error(
+                    "Cannot access the configured backup folder(s) - check that the account Emby runs as has write "
+                    + "permission there (see the README's Permissions section). Backup aborted. Error: {0}", ex.Message);
+                return Task.CompletedTask;
             }
 
             var query = new InternalItemsQuery
@@ -89,6 +94,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var episodes = _libraryManager.GetItemList(query).OfType<Episode>().ToList();
             var total = episodes.Count;
             var processed = 0;
+            var failedWrites = 0;
 
             foreach (var episode in episodes)
             {
@@ -132,10 +138,22 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 }
                 else
                 {
-                    Directory.CreateDirectory(jsonDir);
-                    var jsonPath = Path.Combine(jsonDir, fileName);
-                    var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
-                    File.WriteAllText(jsonPath, json);
+                    try
+                    {
+                        Directory.CreateDirectory(jsonDir);
+                        var jsonPath = Path.Combine(jsonDir, fileName);
+                        var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
+                        File.WriteAllText(jsonPath, json);
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                    {
+                        // A single folder's permission/IO problem (e.g. Emby's
+                        // user account lacking write access to that media
+                        // folder) shouldn't abort the whole backup run - log
+                        // it and keep going with the rest of the library.
+                        failedWrites++;
+                        _logger.Error("Failed to write JSON backup for {0} to {1}: {2}", fileName, jsonDir, ex.Message);
+                    }
                 }
 
                 if (writeNfo)
@@ -147,14 +165,29 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     }
                     else
                     {
-                        Directory.CreateDirectory(nfoDir);
-                        var nfoPath = Path.Combine(nfoDir, Path.ChangeExtension(fileName, ".nfo"));
-                        WriteNfo(backup, nfoPath);
+                        try
+                        {
+                            Directory.CreateDirectory(nfoDir);
+                            var nfoPath = Path.Combine(nfoDir, Path.ChangeExtension(fileName, ".nfo"));
+                            WriteNfo(backup, nfoPath);
+                        }
+                        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                        {
+                            failedWrites++;
+                            _logger.Error("Failed to write NFO backup for {0} to {1}: {2}", fileName, nfoDir, ex.Message);
+                        }
                     }
                 }
             }
 
-            _logger.Info("Intro/credits backup complete: {0} episode(s) processed.", total);
+            if (failedWrites > 0)
+            {
+                _logger.Warn("Intro/credits backup complete: {0} episode(s) processed, {1} file write(s) failed (likely a permissions issue - see errors above).", total, failedWrites);
+            }
+            else
+            {
+                _logger.Info("Intro/credits backup complete: {0} episode(s) processed.", total);
+            }
             return Task.CompletedTask;
         }
 
