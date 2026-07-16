@@ -35,7 +35,7 @@ namespace IntrosBackupReplacement
             yield return new PluginPageInfo
             {
                 Name = "IntrosBackupReplacementConfigPage",
-                DisplayName = "Intro/Credits Backup & Restore",
+                DisplayName = "Intro/Credits Backup",
                 EmbeddedResourcePath = string.Format("{0}.Configuration.configPage.html", GetType().Namespace),
                 EnableInMainMenu = true,
                 IsMainConfigPage = true,

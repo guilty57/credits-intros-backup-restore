@@ -31,8 +31,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
-        public string Description => "Reads per-episode JSON backups and re-applies intro/credits chapter markers.";
-        public string Category => "Intro/Credits Backup & Restore";
+        public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
+        public string Category => "Intro/Credits Backup & Restore (Open Source)";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
