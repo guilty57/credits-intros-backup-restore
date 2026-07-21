@@ -32,6 +32,19 @@ namespace IntrosBackupReplacement
         /// </summary>
         public bool SaveNfoToMediaFolder { get; set; } = false;
 
+        /// <summary>
+        /// If true, also insert/update a &lt;markers&gt; node directly inside
+        /// the media's own existing NFO file (named after the video itself,
+        /// e.g. "Episode Title.nfo" - not our own {Series} ({TvdbId})... file).
+        /// Only touches a file that already exists (typically written by the
+        /// NfoMetadata plugin) - never creates one from scratch. Uses the
+        /// same &lt;markers&gt;&lt;introstart&gt;/&lt;introend&gt;/&lt;creditstart&gt;
+        /// schema as the original commercial "Intros Backup/Restore" plugin,
+        /// for interoperability with existing backups made by it. This is in
+        /// addition to, not a replacement for, the JSON backup above.
+        /// </summary>
+        public bool InsertIntoMediaNfo { get; set; } = false;
+
         public PluginConfiguration()
         {
         }

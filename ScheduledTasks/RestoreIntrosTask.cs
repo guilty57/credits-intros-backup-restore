@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using IntrosBackupReplacement.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -45,17 +46,18 @@ namespace IntrosBackupReplacement.ScheduledTasks
         {
             var config = Plugin.Instance!.Configuration;
             var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
+            var jsonPathUsable = jsonUsesMediaFolder || !string.IsNullOrWhiteSpace(config.JsonBackupPath);
 
-            if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
+            if (!jsonPathUsable && !config.InsertIntoMediaNfo)
             {
-                _logger.Warn("JsonBackupPath is not configured and 'Save JSON to media folders' is off - skipping restore.");
+                _logger.Warn("No JSON backup path configured and 'Insert into media NFO' is off - nothing to restore from.");
                 return Task.CompletedTask;
             }
 
-            if (!jsonUsesMediaFolder && !Directory.Exists(config.JsonBackupPath))
+            if (jsonPathUsable && !jsonUsesMediaFolder && !Directory.Exists(config.JsonBackupPath))
             {
-                _logger.Warn("JsonBackupPath does not exist - skipping restore.");
-                return Task.CompletedTask;
+                _logger.Warn("JsonBackupPath does not exist - JSON restore will be skipped, continuing with media-NFO restore only if enabled.");
+                jsonPathUsable = false;
             }
 
             var query = new InternalItemsQuery
@@ -94,28 +96,44 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 var fileName = BackupIntrosTask.BuildFileName(expectedBackup);
 
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
-                var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                if (string.IsNullOrEmpty(jsonDir))
+
+                EpisodeIntroBackup? backup = null;
+
+                if (jsonPathUsable)
                 {
-                    continue;
+                    var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
+                    if (!string.IsNullOrEmpty(jsonDir))
+                    {
+                        var filePath = Path.Combine(jsonDir, fileName);
+                        if (File.Exists(filePath))
+                        {
+                            try
+                            {
+                                var json = File.ReadAllText(filePath);
+                                backup = JsonSerializer.Deserialize<EpisodeIntroBackup>(json);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Error("Failed to parse backup file {0}: {1}", filePath, ex.Message);
+                            }
+                        }
+                    }
                 }
 
-                var filePath = Path.Combine(jsonDir, fileName);
-                if (!File.Exists(filePath))
+                if (backup == null && config.InsertIntoMediaNfo && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
                 {
-                    continue;
-                }
-
-                EpisodeIntroBackup? backup;
-                try
-                {
-                    var json = File.ReadAllText(filePath);
-                    backup = JsonSerializer.Deserialize<EpisodeIntroBackup>(json);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error("Failed to parse backup file {0}: {1}", filePath, ex.Message);
-                    continue;
+                    var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
+                    if (File.Exists(mediaNfoPath))
+                    {
+                        try
+                        {
+                            backup = TryReadMarkersFromNfo(mediaNfoPath);
+                        }
+                        catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+                        {
+                            _logger.Error("Failed to read markers from {0}: {1}", mediaNfoPath, ex.Message);
+                        }
+                    }
                 }
 
                 if (backup == null)
@@ -174,6 +192,51 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
             _logger.Info("Intro/credits restore complete: {0} of {1} episode(s) had a backup applied.", restored, total);
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Reads a top-level &lt;markers&gt; node (with &lt;introstart&gt;,
+        /// &lt;introend&gt;, &lt;creditstart&gt; children, in ticks) from an
+        /// existing NFO file, using the same schema as the original
+        /// commercial "Intros Backup/Restore" plugin. Returns null if the
+        /// file has no &lt;markers&gt; node at all. A value of 0 (or a
+        /// missing child element) is treated as "not set", matching this
+        /// plugin's own convention.
+        /// </summary>
+        private static EpisodeIntroBackup? TryReadMarkersFromNfo(string nfoPath)
+        {
+            var doc = new XmlDocument();
+            doc.Load(nfoPath);
+
+            var markers = doc.DocumentElement?.SelectSingleNode("markers");
+            if (markers == null)
+            {
+                return null;
+            }
+
+            long? ReadTicks(string elementName)
+            {
+                var text = markers.SelectSingleNode(elementName)?.InnerText;
+                if (string.IsNullOrWhiteSpace(text) || !long.TryParse(text, out var value) || value == 0)
+                {
+                    return null;
+                }
+                return value;
+            }
+
+            var backup = new EpisodeIntroBackup
+            {
+                IntroStartTicks = ReadTicks("introstart"),
+                IntroEndTicks = ReadTicks("introend"),
+                CreditsStartTicks = ReadTicks("creditstart")
+            };
+
+            if (backup.IntroStartTicks == null && backup.IntroEndTicks == null && backup.CreditsStartTicks == null)
+            {
+                return null;
+            }
+
+            return backup;
         }
     }
 }

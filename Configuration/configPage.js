@@ -10,6 +10,7 @@ define([], function () {
             view.querySelector('#txtNfoBackupPath').value = config.NfoBackupPath || '';
             view.querySelector('#chkSaveJsonToMediaFolder').checked = config.SaveJsonToMediaFolder || false;
             view.querySelector('#chkSaveNfoToMediaFolder').checked = config.SaveNfoToMediaFolder || false;
+            view.querySelector('#chkInsertIntoMediaNfo').checked = config.InsertIntoMediaNfo || false;
             Dashboard.hideLoadingMsg();
         });
     }
@@ -23,6 +24,7 @@ define([], function () {
             config.NfoBackupPath = view.querySelector('#txtNfoBackupPath').value;
             config.SaveJsonToMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
             config.SaveNfoToMediaFolder = view.querySelector('#chkSaveNfoToMediaFolder').checked;
+            config.InsertIntoMediaNfo = view.querySelector('#chkInsertIntoMediaNfo').checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);

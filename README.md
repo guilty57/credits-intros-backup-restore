@@ -110,6 +110,7 @@ docker run --rm -v "$(pwd)":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet
 | NFO backup path | Where per-episode NFO backups are written, flat. Leave empty (and the media-folder checkbox below unchecked) to skip NFO output entirely. |
 | Save JSON backup files to media folders | Overrides the JSON backup path - writes each episode's JSON next to its video file instead. |
 | Save NFO backup files to media folders | Overrides the NFO backup path - writes each episode's NFO next to its video file instead. |
+| Also insert markers into the media's existing NFO file | See "Media NFO integration" below. |
 
 Storing backups centrally (the default) keeps everything in one place and
 makes the automatic pre-backup archiving possible. Storing them alongside
@@ -117,6 +118,38 @@ your media instead means the marker data travels with the file if you move
 or copy it elsewhere - useful if you rsync or share your library folders
 directly. Pick whichever fits your workflow; JSON and NFO can each be
 configured independently.
+
+## Media NFO integration
+
+Separately from the JSON/NFO backup options above, there's a "Also insert
+markers into the media's existing NFO file" toggle. When enabled:
+
+- **On backup**, it adds a `<markers>` element directly into the NFO file
+  your metadata scraper (e.g. the NfoMetadata plugin) already writes next
+  to each episode's video - the same file, the same name as the video
+  itself, not a separate file. It only touches a file that already exists;
+  nothing is created from scratch. Everything else in that NFO (title,
+  overview, ratings, etc.) is preserved untouched - only the `<markers>`
+  node is added or replaced.
+- **On restore**, if no JSON backup is found for an episode, this same
+  `<markers>` element is read as a fallback. This means backups made by
+  the original commercial "Intros Backup/Restore" plugin - which used this
+  exact approach and schema - can be restored directly with this plugin,
+  no conversion needed.
+
+Schema used (matches the original commercial plugin's, for compatibility):
+```xml
+<markers>
+  <introstart>771144278</introstart>
+  <introend>875621889</introend>
+  <creditstart>0</creditstart>
+</markers>
+```
+A value of `0` (or a missing element) is treated as "not set".
+
+This is an addition to, not a replacement for, the JSON backup - JSON
+remains the more reliable source since it doesn't depend on a scraper NFO
+already existing for every episode.
 
 ## Permissions
 

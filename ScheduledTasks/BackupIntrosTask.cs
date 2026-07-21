@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using IntrosBackupReplacement.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -178,6 +179,31 @@ namespace IntrosBackupReplacement.ScheduledTasks
                         }
                     }
                 }
+
+                if (config.InsertIntoMediaNfo && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
+                {
+                    var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
+                    if (!File.Exists(mediaNfoPath))
+                    {
+                        // We only ever insert into an NFO that already exists
+                        // (typically written by the NfoMetadata plugin) - we
+                        // never invent one from scratch, since we don't know
+                        // what root element/schema Emby's own scraper expects.
+                        _logger.Warn("Skipping media-NFO insert for {0} - no existing NFO found at {1}.", fileName, mediaNfoPath);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            InsertMarkersIntoExistingNfo(backup, mediaNfoPath);
+                        }
+                        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or XmlException)
+                        {
+                            failedWrites++;
+                            _logger.Error("Failed to insert markers into existing NFO {0}: {1}", mediaNfoPath, ex.Message);
+                        }
+                    }
+                }
             }
 
             if (failedWrites > 0)
@@ -276,6 +302,51 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 </intros>
                 """;
             File.WriteAllText(path, nfo);
+        }
+
+        /// <summary>
+        /// Loads an existing NFO file (e.g. one written by the NfoMetadata
+        /// plugin), replaces or adds a top-level &lt;markers&gt; element with
+        /// this episode's intro/credits ticks, and saves back over the same
+        /// file. XmlDocument's DOM model preserves every other element in
+        /// the file untouched - we only touch the one node we own. Uses the
+        /// same &lt;markers&gt;&lt;introstart&gt;/&lt;introend&gt;/&lt;creditstart&gt;
+        /// schema as the original commercial "Intros Backup/Restore" plugin.
+        /// </summary>
+        private static void InsertMarkersIntoExistingNfo(EpisodeIntroBackup backup, string nfoPath)
+        {
+            var doc = new XmlDocument();
+            doc.Load(nfoPath);
+
+            var root = doc.DocumentElement;
+            if (root == null)
+            {
+                throw new XmlException($"NFO file has no root element: {nfoPath}");
+            }
+
+            var existingMarkers = root.SelectSingleNode("markers");
+            if (existingMarkers != null)
+            {
+                root.RemoveChild(existingMarkers);
+            }
+
+            var markers = doc.CreateElement("markers");
+
+            var introStart = doc.CreateElement("introstart");
+            introStart.InnerText = (backup.IntroStartTicks ?? 0).ToString();
+            markers.AppendChild(introStart);
+
+            var introEnd = doc.CreateElement("introend");
+            introEnd.InnerText = (backup.IntroEndTicks ?? 0).ToString();
+            markers.AppendChild(introEnd);
+
+            var creditStart = doc.CreateElement("creditstart");
+            creditStart.InnerText = (backup.CreditsStartTicks ?? 0).ToString();
+            markers.AppendChild(creditStart);
+
+            root.AppendChild(markers);
+
+            doc.Save(nfoPath);
         }
     }
 }

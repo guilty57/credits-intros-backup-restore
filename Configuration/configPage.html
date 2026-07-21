@@ -71,6 +71,27 @@
                     </div>
                 </div>
 
+                <div class="verticalSection">
+                    <h3>Media NFO integration</h3>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkInsertIntoMediaNfo" name="InsertIntoMediaNfo" type="checkbox" is="emby-checkbox" />
+                        <span>Also insert markers into the media's existing NFO file</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        On backup, adds a &lt;markers&gt; element (with the same schema the original
+                        commercial "Intros Backup/Restore" plugin used) directly into the NFO file
+                        Emby's own metadata scraper already writes next to each video - only if that
+                        file already exists; nothing is created from scratch. Everything else already
+                        in that NFO is preserved. On restore, this same &lt;markers&gt; element is
+                        also read as a fallback if no JSON backup is found for an episode - so
+                        existing backups made by the original commercial plugin can be restored
+                        directly, with no conversion step needed.
+                    </div>
+                </div>
+
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
