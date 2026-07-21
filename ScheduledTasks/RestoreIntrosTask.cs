@@ -32,7 +32,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
-        public string Description => "Reads per-episode JSON backups and re-applies intro/credits chapter markers.";
+        public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
         public string Category => "Intro/Credits Backup & Restore";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -86,18 +86,31 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     continue;
                 }
 
+                var seasonNumber = episode.ParentIndexNumber ?? 0;
+                var episodeNumber = episode.IndexNumber ?? 0;
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
 
                 EpisodeIntroBackup? backup = null;
+                var foundFile = false;
 
                 if (jsonPathUsable)
                 {
                     var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                    if (!string.IsNullOrEmpty(jsonDir))
+                    if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
                     {
-                        var filePath = Path.Combine(jsonDir, fileName);
-                        if (File.Exists(filePath))
+                        // Match by TvdbId + season + episode only - NOT the episode
+                        // title. A library's metadata language (e.g. translated
+                        // episode titles) can differ from whatever title was baked
+                        // into the filename when the backup was originally written,
+                        // so an exact-filename match would silently miss episodes
+                        // whose title has since changed or is shown in another
+                        // language than the backup was made in.
+                        var searchPattern = $"* ({tvdbId}) S{seasonNumber:D2}E{episodeNumber:D2}*.json";
+                        var filePath = Directory.GetFiles(jsonDir, searchPattern).FirstOrDefault();
+
+                        if (filePath != null)
                         {
+                            foundFile = true;
                             try
                             {
                                 var json = File.ReadAllText(filePath);
@@ -116,6 +129,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                     if (File.Exists(mediaNfoPath))
                     {
+                        foundFile = true;
                         try
                         {
                             backup = TryReadMarkersFromNfo(mediaNfoPath);
@@ -129,6 +143,10 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
                 if (backup == null)
                 {
+                    if (!foundFile)
+                    {
+                        skippedNoFile++;
+                    }
                     continue;
                 }
 
