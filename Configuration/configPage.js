@@ -3,14 +3,24 @@ define([], function () {
 
     var pluginId = "7602a9a8-788d-4007-84c1-a08a3671e1aa";
 
+    function updateJsonPathState(view) {
+        var usesMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
+        var pathInput = view.querySelector('#txtJsonBackupPath');
+        var browseButton = view.querySelector('#btnBrowseJsonBackupPath');
+        var container = view.querySelector('#jsonPathContainer');
+
+        pathInput.disabled = usesMediaFolder;
+        browseButton.disabled = usesMediaFolder;
+        container.style.opacity = usesMediaFolder ? '0.4' : '1';
+    }
+
     function loadConfig(view) {
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             view.querySelector('#txtJsonBackupPath').value = config.JsonBackupPath || '';
-            view.querySelector('#txtNfoBackupPath').value = config.NfoBackupPath || '';
             view.querySelector('#chkSaveJsonToMediaFolder').checked = config.SaveJsonToMediaFolder || false;
-            view.querySelector('#chkSaveNfoToMediaFolder').checked = config.SaveNfoToMediaFolder || false;
             view.querySelector('#chkInsertIntoMediaNfo').checked = config.InsertIntoMediaNfo || false;
+            updateJsonPathState(view);
             Dashboard.hideLoadingMsg();
         });
     }
@@ -21,9 +31,7 @@ define([], function () {
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(pluginId).then(function (config) {
             config.JsonBackupPath = view.querySelector('#txtJsonBackupPath').value;
-            config.NfoBackupPath = view.querySelector('#txtNfoBackupPath').value;
             config.SaveJsonToMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
-            config.SaveNfoToMediaFolder = view.querySelector('#chkSaveNfoToMediaFolder').checked;
             config.InsertIntoMediaNfo = view.querySelector('#chkInsertIntoMediaNfo').checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
@@ -63,8 +71,8 @@ define([], function () {
             view.querySelector('#btnBrowseJsonBackupPath')
                 .addEventListener('click', function () { onBrowseClick(view, '#txtJsonBackupPath'); });
 
-            view.querySelector('#btnBrowseNfoBackupPath')
-                .addEventListener('click', function () { onBrowseClick(view, '#txtNfoBackupPath'); });
+            view.querySelector('#chkSaveJsonToMediaFolder')
+                .addEventListener('change', function () { updateJsonPathState(view); });
         });
 
         view.addEventListener('viewhide', function () {

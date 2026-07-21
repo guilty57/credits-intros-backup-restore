@@ -9,11 +9,12 @@ replacement for a commercial plugin whose developer stopped maintaining it.
   markers) into a folder you choose - or, if you'd rather the marker data
   travel with your media, directly into each episode's own media folder.
   When using a centralized folder, each run first zips any existing
-  `.json`/`.nfo` files into a timestamped archive
+  `.json` files into a timestamped archive
   (`{BackupPath}/archive/backup-{yyyyMMdd-HHmmss}.zip`) and clears the
   folder, so backups never silently pile up or get overwritten in place.
-  Optional companion `.nfo` file per episode, with its own independent path
-  and media-folder setting.
+  Optionally, also inserts the same markers directly into the NFO file
+  your metadata scraper already writes next to each episode - see "Media
+  NFO integration" below.
 - **Restore Intro/Credits Markers** - reads the JSON backups back and
   re-applies the markers, matching each episode by looking for its own
   expected backup file (built from that episode's TVDB ID + season +
@@ -96,7 +97,7 @@ docker run --rm -v "$(pwd)":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet
 2. Restart Emby Server.
 3. Go to Dashboard → Plugins - "Intro/Credits Backup & Restore" should
    appear, with its own config page (click it to set the backup folder path
-   and toggle NFO output).
+   and, if you want, enable the media-NFO integration).
 4. Go to Dashboard → Scheduled Tasks - both tasks appear grouped under their
    own "Intro/Credits Backup & Restore" heading. The backup task defaults to
    a daily 04:00 trigger; the restore task has no default trigger (run it
@@ -107,17 +108,14 @@ docker run --rm -v "$(pwd)":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet
 | Setting | Description |
 |---|---|
 | JSON backup path | Where per-episode JSON backups are written, flat (no per-series subfolders). Ignored if "Save JSON backup files to media folders" is checked. |
-| NFO backup path | Where per-episode NFO backups are written, flat. Leave empty (and the media-folder checkbox below unchecked) to skip NFO output entirely. |
 | Save JSON backup files to media folders | Overrides the JSON backup path - writes each episode's JSON next to its video file instead. |
-| Save NFO backup files to media folders | Overrides the NFO backup path - writes each episode's NFO next to its video file instead. |
 | Also insert markers into the media's existing NFO file | See "Media NFO integration" below. |
 
 Storing backups centrally (the default) keeps everything in one place and
 makes the automatic pre-backup archiving possible. Storing them alongside
 your media instead means the marker data travels with the file if you move
 or copy it elsewhere - useful if you rsync or share your library folders
-directly. Pick whichever fits your workflow; JSON and NFO can each be
-configured independently.
+directly.
 
 ## Media NFO integration
 

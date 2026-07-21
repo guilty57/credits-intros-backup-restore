@@ -33,7 +33,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Backup Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Backup";
-        public string Description => "Writes each episode's intro/credits chapter markers to JSON/NFO files, either in the backup folder or next to the media.";
+        public string Description => "Writes each episode's intro/credits chapter markers to a JSON file, either in the backup folder or next to the media.";
         public string Category => "Intro/Credits Backup & Restore (Open Source)";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -52,11 +52,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var config = Plugin.Instance!.Configuration;
 
             var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
-            var nfoUsesMediaFolder = config.SaveNfoToMediaFolder;
-            // NFO output is enabled simply by having a destination configured -
-            // either media-folder mode is on, or a central NfoBackupPath is set.
-            // No separate "also write NFO" toggle to keep in sync with these.
-            var writeNfo = nfoUsesMediaFolder || !string.IsNullOrWhiteSpace(config.NfoBackupPath);
 
             if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
             {
@@ -71,17 +66,11 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     Directory.CreateDirectory(config.JsonBackupPath);
                     ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
                 }
-
-                if (writeNfo && !nfoUsesMediaFolder)
-                {
-                    Directory.CreateDirectory(config.NfoBackupPath);
-                    ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
-                }
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
                 _logger.Error(
-                    "Cannot access the configured backup folder(s) - check that the account Emby runs as has write "
+                    "Cannot access the configured backup folder - check that the account Emby runs as has write "
                     + "permission there (see the README's Permissions section). Backup aborted. Error: {0}", ex.Message);
                 return Task.CompletedTask;
             }
@@ -154,29 +143,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
                         // it and keep going with the rest of the library.
                         failedWrites++;
                         _logger.Error("Failed to write JSON backup for {0} to {1}: {2}", fileName, jsonDir, ex.Message);
-                    }
-                }
-
-                if (writeNfo)
-                {
-                    var nfoDir = nfoUsesMediaFolder ? mediaFolder : config.NfoBackupPath;
-                    if (string.IsNullOrEmpty(nfoDir))
-                    {
-                        _logger.Warn("Skipping NFO for {0} - no destination folder available.", fileName);
-                    }
-                    else
-                    {
-                        try
-                        {
-                            Directory.CreateDirectory(nfoDir);
-                            var nfoPath = Path.Combine(nfoDir, Path.ChangeExtension(fileName, ".nfo"));
-                            WriteNfo(backup, nfoPath);
-                        }
-                        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-                        {
-                            failedWrites++;
-                            _logger.Error("Failed to write NFO backup for {0} to {1}: {2}", fileName, nfoDir, ex.Message);
-                        }
                     }
                 }
 
@@ -290,18 +256,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             raw = withoutExt + ".json";
 
             return raw;
-        }
-
-        private static void WriteNfo(EpisodeIntroBackup backup, string path)
-        {
-            var nfo = $"""
-                <intros>
-                  <introstart>{backup.IntroStartTicks}</introstart>
-                  <introend>{backup.IntroEndTicks}</introend>
-                  <creditsstart>{backup.CreditsStartTicks}</creditsstart>
-                </intros>
-                """;
-            File.WriteAllText(path, nfo);
         }
 
         /// <summary>

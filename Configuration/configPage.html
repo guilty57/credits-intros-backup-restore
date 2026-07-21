@@ -9,7 +9,7 @@
                     <p>Backs up and restores intro/credits chapter markers as one JSON file per episode. Run the "Backup Intro/Credits Markers" and "Restore Intro/Credits Markers" tasks from Scheduled Tasks.</p>
                 </div>
 
-                <div class="inputContainer">
+                <div class="inputContainer" id="jsonPathContainer">
                     <label class="inputLabel inputLabelUnfocused" for="txtJsonBackupPath">JSON backup path</label>
                     <div style="display:flex;align-items:center;gap:.5em;">
                         <input id="txtJsonBackupPath" name="JsonBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
@@ -26,28 +26,6 @@
                     </div>
                 </div>
 
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="txtNfoBackupPath">NFO backup path</label>
-                    <div style="display:flex;align-items:center;gap:.5em;">
-                        <input id="txtNfoBackupPath" name="NfoBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
-                        <button
-                            type="button"
-                            is="paper-icon-button-light"
-                            id="btnBrowseNfoBackupPath"
-                            class="emby-input-iconbutton"
-                            title="Browse"><i class="md-icon">search</i></button>
-                    </div>
-                    <div class="fieldDescription">
-                        Folder where per-episode NFO backups are stored, flat (no per-series
-                        subfolders). Leave this empty (and "Save NFO backup files to media folders"
-                        below unchecked) to skip NFO output entirely.
-                    </div>
-                </div>
-
-                <div class="verticalSection">
-                    <h3>Extra options (these override the paths above)</h3>
-                </div>
-
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label>
                         <input id="chkSaveJsonToMediaFolder" name="SaveJsonToMediaFolder" type="checkbox" is="emby-checkbox" />
@@ -56,18 +34,6 @@
                     <div class="fieldDescription checkboxFieldDescription">
                         If enabled, each episode's JSON backup is written next to its video file
                         instead of the JSON backup path above.
-                    </div>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label>
-                        <input id="chkSaveNfoToMediaFolder" name="SaveNfoToMediaFolder" type="checkbox" is="emby-checkbox" />
-                        <span>Save NFO backup files to media folders</span>
-                    </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        If enabled, each episode's NFO backup is written next to its video file
-                        instead of the NFO backup path above. Also enables NFO output on its own,
-                        even if the NFO backup path above is empty.
                     </div>
                 </div>
 
