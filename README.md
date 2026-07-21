@@ -67,7 +67,7 @@ install into `libs/` before building. Typical locations:
 | Windows | `C:\Program Files\Emby-Server\system\` |
 
 ```bash
-git clone https://github.com/<your-username>/intros-backup-restore.git
+git clone https://github.com/guilty57/credits-intros-backup-restore.git
 cd intros-backup-restore
 
 mkdir -p libs
