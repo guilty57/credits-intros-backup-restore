@@ -31,8 +31,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
-        public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
-        public string Category => "Intro/Credits Backup & Restore (Open Source)";
+        public string Description => "Reads per-episode JSON backups and re-applies intro/credits chapter markers.";
+        public string Category => "Intro/Credits Backup & Restore";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
@@ -68,6 +68,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var total = episodes.Count;
             var processed = 0;
             var restored = 0;
+            var skippedNoTvdb = 0;
+            var skippedNoFile = 0;
 
             foreach (var episode in episodes)
             {
@@ -78,33 +80,60 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 var tvdbId = episode.ProviderIds.GetValueOrDefault("Tvdb");
                 if (string.IsNullOrEmpty(tvdbId))
                 {
+                    skippedNoTvdb++;
                     continue;
                 }
-
-                // Build the file name from this episode's own known metadata -
-                // if a backup exists, it will be sitting at exactly this name.
-                var expectedBackup = new EpisodeIntroBackup
-                {
-                    TvdbId = tvdbId,
-                    SeriesName = episode.SeriesName ?? "Unknown Series",
-                    SeasonNumber = episode.ParentIndexNumber ?? 0,
-                    EpisodeNumber = episode.IndexNumber ?? 0,
-                    EpisodeTitle = episode.Name ?? string.Empty
-                };
-                var fileName = BackupIntrosTask.BuildFileName(expectedBackup);
 
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
                 var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                if (string.IsNullOrEmpty(jsonDir))
+                if (string.IsNullOrEmpty(jsonDir) || !Directory.Exists(jsonDir))
                 {
+                    skippedNoFile++;
                     continue;
                 }
 
-                var filePath = Path.Combine(jsonDir, fileName);
-                if (!File.Exists(filePath))
+                var seasonNumber = episode.ParentIndexNumber ?? 0;
+                var episodeNumber = episode.IndexNumber ?? 0;
+
+                // Match on TvdbId + season/episode number only - never on the
+                // episode title. The title in the filename reflects whatever
+                // metadata language was active on the *source* server at
+                // backup time, which can differ from this server's library
+                // language (e.g. an English title backed up on one server,
+                // read back on a server with Turkish-translated titles).
+                // An exact-filename match would silently skip every such
+                // episode, which is what originally happened here.
+                var searchPattern = $"*({tvdbId})*S{seasonNumber:D2}E{episodeNumber:D2}*.json";
+
+                string[] candidates;
+                try
                 {
+                    candidates = Directory.GetFiles(jsonDir, searchPattern);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Failed to search {0} for pattern {1}: {2}", jsonDir, searchPattern, ex.Message);
+                    skippedNoFile++;
                     continue;
                 }
+
+                if (candidates.Length == 0)
+                {
+                    _logger.Debug(
+                        "No backup file matched pattern '{0}' in {1} for {2} S{3:D2}E{4:D2} (TvdbId {5})",
+                        searchPattern, jsonDir, episode.SeriesName, seasonNumber, episodeNumber, tvdbId);
+                    skippedNoFile++;
+                    continue;
+                }
+
+                if (candidates.Length > 1)
+                {
+                    _logger.Warn(
+                        "Multiple backup files matched pattern '{0}' in {1} - using the first one: {2}",
+                        searchPattern, jsonDir, candidates[0]);
+                }
+
+                var filePath = candidates[0];
 
                 EpisodeIntroBackup? backup;
                 try
@@ -172,7 +201,9 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 restored++;
             }
 
-            _logger.Info("Intro/credits restore complete: {0} of {1} episode(s) had a backup applied.", restored, total);
+            _logger.Info(
+                "Intro/credits restore complete: {0} of {1} episode(s) had a backup applied. ({2} skipped: no TvdbId, {3} skipped: no matching backup file)",
+                restored, total, skippedNoTvdb, skippedNoFile);
             return Task.CompletedTask;
         }
     }
