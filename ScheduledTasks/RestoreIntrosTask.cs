@@ -32,8 +32,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
-        public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
-        public string Category => "Intro/Credits Backup & Restore (Open Source)";
+        public string Description => "Reads per-episode JSON backups and re-applies intro/credits chapter markers.";
+        public string Category => "Intro/Credits Backup & Restore";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
@@ -70,6 +70,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var total = episodes.Count;
             var processed = 0;
             var restored = 0;
+            var skippedNoTvdb = 0;
+            var skippedNoFile = 0;
 
             foreach (var episode in episodes)
             {
@@ -80,20 +82,9 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 var tvdbId = episode.ProviderIds.GetValueOrDefault("Tvdb");
                 if (string.IsNullOrEmpty(tvdbId))
                 {
+                    skippedNoTvdb++;
                     continue;
                 }
-
-                // Build the file name from this episode's own known metadata -
-                // if a backup exists, it will be sitting at exactly this name.
-                var expectedBackup = new EpisodeIntroBackup
-                {
-                    TvdbId = tvdbId,
-                    SeriesName = episode.SeriesName ?? "Unknown Series",
-                    SeasonNumber = episode.ParentIndexNumber ?? 0,
-                    EpisodeNumber = episode.IndexNumber ?? 0,
-                    EpisodeTitle = episode.Name ?? string.Empty
-                };
-                var fileName = BackupIntrosTask.BuildFileName(expectedBackup);
 
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
 
@@ -190,7 +181,9 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 restored++;
             }
 
-            _logger.Info("Intro/credits restore complete: {0} of {1} episode(s) had a backup applied.", restored, total);
+            _logger.Info(
+                "Intro/credits restore complete: {0} of {1} episode(s) had a backup applied. ({2} skipped: no TvdbId, {3} skipped: no matching backup file)",
+                restored, total, skippedNoTvdb, skippedNoFile);
             return Task.CompletedTask;
         }
 
