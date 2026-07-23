@@ -38,8 +38,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
-            // Default: once a day. The user can change this from Emby's
-            // Scheduled Tasks UI - no in-app buttons needed.
             yield return new TaskTriggerInfo
             {
                 Type = TaskTriggerInfo.TriggerDaily,
@@ -112,7 +110,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     CreditsStartTicks = chapters.FirstOrDefault(c => c.MarkerType == MarkerType.CreditsStart)?.StartPositionTicks
                 };
 
-                // Nothing worth backing up if none of the three markers were found.
                 if (backup.IntroStartTicks == null && backup.IntroEndTicks == null && backup.CreditsStartTicks == null)
                 {
                     continue;
@@ -131,16 +128,17 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     try
                     {
                         Directory.CreateDirectory(jsonDir);
-                        var jsonPath = Path.Combine(jsonDir, fileName);
+
+                        var jsonFileName = !string.IsNullOrEmpty(episode.Path)
+                            ? Path.ChangeExtension(Path.GetFileName(episode.Path), ".json")
+                            : fileName;
+
+                        var jsonPath = Path.Combine(jsonDir, jsonFileName);
                         var json = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
                         File.WriteAllText(jsonPath, json);
                     }
                     catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
                     {
-                        // A single folder's permission/IO problem (e.g. Emby's
-                        // user account lacking write access to that media
-                        // folder) shouldn't abort the whole backup run - log
-                        // it and keep going with the rest of the library.
                         failedWrites++;
                         _logger.Error("Failed to write JSON backup for {0} to {1}: {2}", fileName, jsonDir, ex.Message);
                     }
@@ -151,10 +149,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                     if (!File.Exists(mediaNfoPath))
                     {
-                        // We only ever insert into an NFO that already exists
-                        // (typically written by the NfoMetadata plugin) - we
-                        // never invent one from scratch, since we don't know
-                        // what root element/schema Emby's own scraper expects.
                         _logger.Warn("Skipping media-NFO insert for {0} - no existing NFO found at {1}.", fileName, mediaNfoPath);
                     }
                     else
@@ -183,12 +177,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             return Task.CompletedTask;
         }
 
-        // The characters below are invalid in Windows/SMB file names. We hard-code
-        // this set instead of relying on Path.GetInvalidFileNameChars(), because
-        // that method returns the HOST OS's invalid set - on Linux (where Emby
-        // runs here) it only excludes '/' and NUL, so things like ':' or '?' in an
-        // episode title would slip through and get mangled into 8.3 short names
-        // once the backup folder is browsed over SMB from Windows.
         private static readonly char[] WindowsInvalidFileNameChars =
             { '<', '>', ':', '"', '/', '\\', '|', '?', '*',
               '\u0000','\u0001','\u0002','\u0003','\u0004','\u0005','\u0006','\u0007',
@@ -196,13 +184,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
               '\u0010','\u0011','\u0012','\u0013','\u0014','\u0015','\u0016','\u0017',
               '\u0018','\u0019','\u001A','\u001B','\u001C','\u001D','\u001E','\u001F' };
 
-        /// <summary>
-        /// Zips any existing files matching searchPattern (top-level only -
-        /// the "archive" subfolder itself is never included) into a
-        /// timestamped archive under {folder}/archive/, then deletes the
-        /// originals so this run starts clean instead of overwriting files
-        /// in place. Only used for centralized (non-media-folder) output.
-        /// </summary>
         private void ArchiveAndClearExisting(string folder, string searchPattern)
         {
             var existingFiles = Directory.GetFiles(folder, searchPattern).ToList();
@@ -233,10 +214,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             _logger.Info("Archived {0} existing file(s) matching {1} to {2} before running a fresh backup.", existingFiles.Count, searchPattern, zipPath);
         }
 
-        /// <summary>
-        /// Builds "{SeriesName} ({TvdbId}) S{SS}E{EE} - {EpisodeTitle}.json",
-        /// stripping characters that are invalid in file names.
-        /// </summary>
         internal static string BuildFileName(EpisodeIntroBackup backup)
         {
             var tvdbPart = string.IsNullOrEmpty(backup.TvdbId) ? "unknown" : backup.TvdbId;
@@ -247,26 +224,13 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 raw = raw.Replace(c, '_');
             }
 
-            // Windows also disallows file names ending in a space or a period
-            // (except the final extension's dot). Trim the base name (without
-            // the .json extension) so a title ending in "..." or a trailing
-            // space doesn't produce an inaccessible file over SMB.
-            var withoutExt = raw.Substring(0, raw.Length - 5); // strip ".json"
+            var withoutExt = raw.Substring(0, raw.Length - 5);
             withoutExt = withoutExt.TrimEnd(' ', '.');
             raw = withoutExt + ".json";
 
             return raw;
         }
 
-        /// <summary>
-        /// Loads an existing NFO file (e.g. one written by the NfoMetadata
-        /// plugin), replaces or adds a top-level &lt;markers&gt; element with
-        /// this episode's intro/credits ticks, and saves back over the same
-        /// file. XmlDocument's DOM model preserves every other element in
-        /// the file untouched - we only touch the one node we own. Uses the
-        /// same &lt;markers&gt;&lt;introstart&gt;/&lt;introend&gt;/&lt;creditstart&gt;
-        /// schema as the original commercial "Intros Backup/Restore" plugin.
-        /// </summary>
         private static void InsertMarkersIntoExistingNfo(EpisodeIntroBackup backup, string nfoPath)
         {
             var doc = new XmlDocument();

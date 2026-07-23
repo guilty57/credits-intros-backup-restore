@@ -33,7 +33,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
         public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
-        public string Category => "Intro/Credits Backup & Restore";
+        public string Category => "Intro/Credits Backup & Restore (Open Source)";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
         {
@@ -70,8 +70,53 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var total = episodes.Count;
             var processed = 0;
             var restored = 0;
-            var skippedNoTvdb = 0;
+            var matchedByTvdb = 0;
+            var matchedByImdb = 0;
+            var matchedByPath = 0;
             var skippedNoFile = 0;
+
+            // Caches so a directory's JSON files are only scanned/parsed once,
+            // even though media-folder mode revisits the same season folder
+            // for every episode in it.
+            var tvdbIndexCache = new Dictionary<string, Dictionary<(string, int, int), string>>();
+            var imdbIndexCache = new Dictionary<string, Dictionary<(string, int, int), string>>();
+
+            Dictionary<(string, int, int), string> GetOrBuildIndex(
+                Dictionary<string, Dictionary<(string, int, int), string>> cache,
+                string dir,
+                Func<EpisodeIntroBackup, string?> idSelector)
+            {
+                if (cache.TryGetValue(dir, out var cached))
+                {
+                    return cached;
+                }
+
+                var index = new Dictionary<(string, int, int), string>();
+                foreach (var file in Directory.GetFiles(dir, "*.json"))
+                {
+                    try
+                    {
+                        var parsed = JsonSerializer.Deserialize<EpisodeIntroBackup>(File.ReadAllText(file));
+                        var id = parsed == null ? null : idSelector(parsed);
+                        if (parsed != null && !string.IsNullOrEmpty(id))
+                        {
+                            var key = (id, parsed.SeasonNumber, parsed.EpisodeNumber);
+                            if (!index.ContainsKey(key))
+                            {
+                                index[key] = file;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Unreadable/malformed file - ignore for indexing purposes,
+                        // the direct path-match fallback may still find it later.
+                    }
+                }
+
+                cache[dir] = index;
+                return index;
+            }
 
             foreach (var episode in episodes)
             {
@@ -80,33 +125,58 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 progress.Report(100.0 * processed / Math.Max(total, 1));
 
                 var tvdbId = episode.ProviderIds.GetValueOrDefault("Tvdb");
-                if (string.IsNullOrEmpty(tvdbId))
-                {
-                    skippedNoTvdb++;
-                    continue;
-                }
-
+                var imdbId = episode.ProviderIds.GetValueOrDefault("Imdb");
                 var seasonNumber = episode.ParentIndexNumber ?? 0;
                 var episodeNumber = episode.IndexNumber ?? 0;
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
 
                 EpisodeIntroBackup? backup = null;
                 var foundFile = false;
+                var matchKind = string.Empty;
 
                 if (jsonPathUsable)
                 {
                     var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
                     if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
                     {
-                        // Match by TvdbId + season + episode only - NOT the episode
-                        // title. A library's metadata language (e.g. translated
-                        // episode titles) can differ from whatever title was baked
-                        // into the filename when the backup was originally written,
-                        // so an exact-filename match would silently miss episodes
-                        // whose title has since changed or is shown in another
-                        // language than the backup was made in.
-                        var searchPattern = $"* ({tvdbId}) S{seasonNumber:D2}E{episodeNumber:D2}*.json";
-                        var filePath = Directory.GetFiles(jsonDir, searchPattern).FirstOrDefault();
+                        string? filePath = null;
+
+                        // 1. Match by TVDB ID + season + episode (content-based -
+                        // independent of filename, survives renames).
+                        if (!string.IsNullOrEmpty(tvdbId))
+                        {
+                            var index = GetOrBuildIndex(tvdbIndexCache, jsonDir, b => b.TvdbId);
+                            if (index.TryGetValue((tvdbId, seasonNumber, episodeNumber), out var match))
+                            {
+                                filePath = match;
+                                matchKind = "tvdb";
+                            }
+                        }
+
+                        // 2. Fall back to IMDB ID + season + episode, for content
+                        // that isn't in TheTVDB's database.
+                        if (filePath == null && !string.IsNullOrEmpty(imdbId))
+                        {
+                            var index = GetOrBuildIndex(imdbIndexCache, jsonDir, b => b.ImdbId);
+                            if (index.TryGetValue((imdbId, seasonNumber, episodeNumber), out var match))
+                            {
+                                filePath = match;
+                                matchKind = "imdb";
+                            }
+                        }
+
+                        // 3. Last resort: same filename as the video itself. No ID
+                        // needed at all here, but this breaks if the video file
+                        // gets renamed after the backup was written.
+                        if (filePath == null && !string.IsNullOrEmpty(episode.Path))
+                        {
+                            var candidate = Path.Combine(jsonDir, Path.ChangeExtension(Path.GetFileName(episode.Path), ".json"));
+                            if (File.Exists(candidate))
+                            {
+                                filePath = candidate;
+                                matchKind = "path";
+                            }
+                        }
 
                         if (filePath != null)
                         {
@@ -149,6 +219,10 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     }
                     continue;
                 }
+
+                if (matchKind == "tvdb") matchedByTvdb++;
+                else if (matchKind == "imdb") matchedByImdb++;
+                else if (matchKind == "path") matchedByPath++;
 
                 var chapters = new List<ChapterInfo>();
 
@@ -200,8 +274,9 @@ namespace IntrosBackupReplacement.ScheduledTasks
             }
 
             _logger.Info(
-                "Intro/credits restore complete: {0} of {1} episode(s) had a backup applied. ({2} skipped: no TvdbId, {3} skipped: no matching backup file)",
-                restored, total, skippedNoTvdb, skippedNoFile);
+                "Intro/credits restore complete: {0} of {1} episode(s) had a backup applied "
+                + "({2} by TVDB, {3} by IMDB, {4} by filename match). {5} skipped: no matching backup file.",
+                restored, total, matchedByTvdb, matchedByImdb, matchedByPath, skippedNoFile);
             return Task.CompletedTask;
         }
 

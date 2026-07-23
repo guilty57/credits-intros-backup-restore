@@ -151,6 +151,14 @@ already existing for every episode.
 
 ## Permissions
 
+**The easiest way to avoid this entirely: don't create the backup folder
+yourself.** Just type the path into the config field and hit Save - don't
+pre-create it via SSH, a zip extract, or a file manager. The plugin creates
+the folder itself the first time the Backup task runs, and since that task
+runs as the Emby Server process, the folder comes out owned by the right
+account from the start. Permission problems below almost always trace back
+to the folder having been created by some *other* user/tool first.
+
 Whichever folder(s) you point this at - a central backup path or "next to
 the media" - the account **Emby Server itself runs as** needs write access
 there. This is an OS-level requirement, not something the plugin can work
