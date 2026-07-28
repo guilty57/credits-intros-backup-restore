@@ -20,6 +20,8 @@ define([], function () {
             view.querySelector('#txtJsonBackupPath').value = config.JsonBackupPath || '';
             view.querySelector('#chkSaveJsonToMediaFolder').checked = config.SaveJsonToMediaFolder || false;
             view.querySelector('#chkInsertIntoMediaNfo').checked = config.InsertIntoMediaNfo || false;
+            view.querySelector('#chkEnableAutoRestore').checked = config.EnableAutoRestore || false;
+            view.querySelector('#chkAutoBackupOnManualEdit').checked = config.AutoBackupOnManualEdit || false;
             updateJsonPathState(view);
             Dashboard.hideLoadingMsg();
         });
@@ -33,6 +35,8 @@ define([], function () {
             config.JsonBackupPath = view.querySelector('#txtJsonBackupPath').value;
             config.SaveJsonToMediaFolder = view.querySelector('#chkSaveJsonToMediaFolder').checked;
             config.InsertIntoMediaNfo = view.querySelector('#chkInsertIntoMediaNfo').checked;
+            config.EnableAutoRestore = view.querySelector('#chkEnableAutoRestore').checked;
+            config.AutoBackupOnManualEdit = view.querySelector('#chkAutoBackupOnManualEdit').checked;
 
             ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);

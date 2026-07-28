@@ -58,6 +58,50 @@
                     </div>
                 </div>
 
+                <div class="verticalSection">
+                    <h3>Auto-restore (experimental)</h3>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkEnableAutoRestore" name="EnableAutoRestore" type="checkbox" is="emby-checkbox" />
+                        <span>Automatically restore markers when they're wiped</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        If enabled, the plugin watches for episode updates and immediately
+                        re-applies backed-up intro/credits markers whenever they're missing -
+                        whether that's from a Library Scan or a Refresh Metadata (both can wipe
+                        them; "Lock this item" only protects against Library Scan, not Refresh
+                        Metadata). Runs automatically in the background - no need to run the
+                        Restore task manually after library maintenance. Requires a JSON backup
+                        path (or media-NFO integration) to already be configured above. This is
+                        newer and less tested than the scheduled Restore task, so it's off by
+                        default.
+                    </div>
+                </div>
+
+                <div class="verticalSection">
+                    <h3>Auto-backup on manual edit (experimental)</h3>
+                </div>
+
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label>
+                        <input id="chkAutoBackupOnManualEdit" name="AutoBackupOnManualEdit" type="checkbox" is="emby-checkbox" />
+                        <span>Automatically back up markers when manually edited</span>
+                    </label>
+                    <div class="fieldDescription checkboxFieldDescription">
+                        If enabled, the plugin watches the Emby server log for signs of a manual
+                        marker correction made through ChapterApi, EmbyCredits, or Segment
+                        Reporting - none of these raise the update event "Automatically restore"
+                        above listens for, so without this, a manual correction is never backed
+                        up. Also reacts to Emby's own native intro detection, which only knows
+                        about Intro markers: when it runs, this backs up the new intro and
+                        reapplies any existing credits marker so it isn't lost. Independent of
+                        "Automatically restore" above - either can be used without the other.
+                        Off by default.
+                    </div>
+                </div>
+
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>

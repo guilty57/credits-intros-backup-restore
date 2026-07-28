@@ -224,53 +224,18 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 else if (matchKind == "imdb") matchedByImdb++;
                 else if (matchKind == "path") matchedByPath++;
 
-                var chapters = new List<ChapterInfo>();
-
-                if (backup.IntroStartTicks.HasValue)
+                if (!backup.IntroStartTicks.HasValue && !backup.IntroEndTicks.HasValue && !backup.CreditsStartTicks.HasValue)
                 {
-                    chapters.Add(new ChapterInfo
-                    {
-                        StartPositionTicks = backup.IntroStartTicks.Value,
-                        MarkerType = MarkerType.IntroStart,
-                        Name = "Intro Start"
-                    });
-                }
-
-                if (backup.IntroEndTicks.HasValue)
-                {
-                    chapters.Add(new ChapterInfo
-                    {
-                        StartPositionTicks = backup.IntroEndTicks.Value,
-                        MarkerType = MarkerType.IntroEnd,
-                        Name = "Intro End"
-                    });
-                }
-
-                if (backup.CreditsStartTicks.HasValue)
-                {
-                    chapters.Add(new ChapterInfo
-                    {
-                        StartPositionTicks = backup.CreditsStartTicks.Value,
-                        MarkerType = MarkerType.CreditsStart,
-                        Name = "Credits Start"
-                    });
-                }
-
-                if (chapters.Count == 0)
-                {
+                    // Backup has nothing to contribute for this episode -
+                    // leave whatever is currently live untouched rather than
+                    // writing a no-op.
                     continue;
                 }
 
-                // Merge with any existing plain chapter markers so we don't
-                // clobber non-intro/credits chapters already saved on the item.
-                var existing = _itemRepository.GetChapters(episode)
-                    .Where(c => c.MarkerType == MarkerType.Chapter)
-                    .ToList();
-
-                var merged = existing.Concat(chapters).OrderBy(c => c.StartPositionTicks).ToList();
-
-                _itemRepository.SaveChapters(episode.InternalId, merged);
-                restored++;
+                if (EpisodeRestoreHelper.ApplyBackup(episode, backup, _itemRepository))
+                {
+                    restored++;
+                }
             }
 
             _logger.Info(

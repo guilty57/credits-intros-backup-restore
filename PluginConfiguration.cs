@@ -30,6 +30,28 @@ namespace IntrosBackupReplacement
         /// </summary>
         public bool InsertIntoMediaNfo { get; set; } = false;
 
+        /// <summary>
+        /// If true, the plugin subscribes to Emby's item-updated event and
+        /// automatically re-applies backed-up intro/credits markers to an
+        /// episode the moment they're wiped by a Library Scan or Refresh
+        /// Metadata, instead of requiring a manual/scheduled Restore run.
+        /// Off by default - this is a bigger behavioral change than the rest
+        /// of the plugin's opt-in settings.
+        /// </summary>
+        public bool EnableAutoRestore { get; set; } = false;
+
+        /// <summary>
+        /// If true, the plugin watches the Emby server log for signs of a
+        /// manual chapter edit made through ChapterApi, EmbyCredits, Segment
+        /// Reporting, or Emby's own native intro detection - none of which
+        /// raise the event EnableAutoRestore listens for - and automatically
+        /// writes a fresh backup (or, for native intro detection, backs up
+        /// the new intro and reapplies any existing credits marker). Off by
+        /// default - this is separate from and independent of
+        /// EnableAutoRestore.
+        /// </summary>
+        public bool AutoBackupOnManualEdit { get; set; } = false;
+
         public PluginConfiguration()
         {
         }
