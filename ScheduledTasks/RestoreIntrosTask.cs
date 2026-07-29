@@ -265,21 +265,45 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 return null;
             }
 
-            long? ReadTicks(string elementName)
+            long? ReadRaw(string elementName)
             {
                 var text = markers.SelectSingleNode(elementName)?.InnerText;
-                if (string.IsNullOrWhiteSpace(text) || !long.TryParse(text, out var value) || value == 0)
+                if (string.IsNullOrWhiteSpace(text) || !long.TryParse(text, out var value))
                 {
                     return null;
                 }
                 return value;
             }
 
+            var rawIntroStart = ReadRaw("introstart");
+            var rawIntroEnd = ReadRaw("introend");
+            var rawCreditsStart = ReadRaw("creditstart");
+
+            // introstart/introend are only treated as "not detected" when BOTH
+            // are zero/missing - a genuine intro starting at the very first
+            // frame (IntroStart == 0) is otherwise indistinguishable from "no
+            // intro" in the NFO, since the schema has no way to represent
+            // "absent" separately from zero. Checking the pair resolves this:
+            // if either field is non-zero, the intro is real and a
+            // IntroStart == 0 value is preserved rather than dropped.
+            long? introStart = null;
+            long? introEnd = null;
+            if ((rawIntroStart ?? 0) != 0 || (rawIntroEnd ?? 0) != 0)
+            {
+                introStart = rawIntroStart ?? 0;
+                introEnd = rawIntroEnd ?? 0;
+            }
+
+            // CreditsStart == 0 isn't a realistic case (credits never start at
+            // the very first frame), so the original zero-means-absent rule
+            // stays as-is here.
+            var creditsStart = (rawCreditsStart.HasValue && rawCreditsStart.Value != 0) ? rawCreditsStart : null;
+
             var backup = new EpisodeIntroBackup
             {
-                IntroStartTicks = ReadTicks("introstart"),
-                IntroEndTicks = ReadTicks("introend"),
-                CreditsStartTicks = ReadTicks("creditstart")
+                IntroStartTicks = introStart,
+                IntroEndTicks = introEnd,
+                CreditsStartTicks = creditsStart
             };
 
             if (backup.IntroStartTicks == null && backup.IntroEndTicks == null && backup.CreditsStartTicks == null)
