@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>IntrosBackupReplacement</AssemblyName>
     <RootNamespace>IntrosBackupReplacement</RootNamespace>
-    <Version>1.6.0.0</Version>
+    <Version>1.8.0.0</Version>
     <!-- Emby loads plugins by copying the built DLL into its plugins folder;
          it does not need the SDK reference DLLs alongside it. -->
     <EnableDynamicLoading>true</EnableDynamicLoading>

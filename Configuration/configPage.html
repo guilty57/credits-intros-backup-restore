@@ -6,99 +6,203 @@
             <form class="introsBackupReplacementConfigForm">
                 <div class="verticalSection">
                     <h2>Intro/Credits Backup & Restore</h2>
-                    <p>Backs up and restores intro/credits chapter markers as one JSON file per episode. Run the "Backup Intro/Credits Markers" and "Restore Intro/Credits Markers" tasks from Scheduled Tasks.</p>
+                    <p>Backs up and restores intro/credits chapter markers as one JSON and/or NFO file per episode. Run the "Backup Intro/Credits Markers" and "Restore Intro/Credits Markers" tasks from Scheduled Tasks.</p>
                 </div>
 
-                <div class="inputContainer" id="jsonPathContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="txtJsonBackupPath">JSON backup path</label>
-                    <div style="display:flex;align-items:center;gap:.5em;">
-                        <input id="txtJsonBackupPath" name="JsonBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
-                        <button
-                            type="button"
-                            is="paper-icon-button-light"
-                            id="btnBrowseJsonBackupPath"
-                            class="emby-input-iconbutton"
-                            title="Browse"><i class="md-icon">search</i></button>
+                <div class="verticalSection">
+                    <h3>Backup & Restore Options</h3>
+                </div>
+
+                <!-- ============================== CUSTOM ============================== -->
+                <div class="checkboxContainer">
+                    <label>
+                        <input id="chkModeCustom" name="ModeCustom" type="checkbox" is="emby-checkbox" />
+                        <span><strong>Custom</strong></span>
+                    </label>
+                </div>
+
+                <div id="customOptions">
+                    <div class="verticalSection">
+                        <h4>Backup:</h4>
                     </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkCustomBackupJson" name="CustomBackupJson" type="checkbox" is="emby-checkbox" />
+                            <span>Backup markers as JSON in selected folder:</span>
+                        </label>
+                    </div>
+                    <div class="inputContainer" id="jsonPathContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtJsonBackupPath">JSON backup path</label>
+                        <div style="display:flex;align-items:center;gap:.5em;">
+                            <input id="txtJsonBackupPath" name="JsonBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
+                            <button
+                                type="button"
+                                is="paper-icon-button-light"
+                                id="btnBrowseJsonBackupPath"
+                                class="emby-input-iconbutton"
+                                title="Browse"><i class="md-icon">search</i></button>
+                        </div>
+                        <div class="fieldDescription">
+                            Folder where per-episode JSON backups are stored, flat (no per-series subfolders).
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkCustomBackupNfo" name="CustomBackupNfo" type="checkbox" is="emby-checkbox" />
+                            <span>Backup markers as NFO in selected folder:</span>
+                        </label>
+                    </div>
+                    <div class="inputContainer" id="nfoPathContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtNfoBackupPath">NFO backup path</label>
+                        <div style="display:flex;align-items:center;gap:.5em;">
+                            <input id="txtNfoBackupPath" name="NfoBackupPath" type="text" is="emby-input" style="flex-grow:1;" />
+                            <button
+                                type="button"
+                                is="paper-icon-button-light"
+                                id="btnBrowseNfoBackupPath"
+                                class="emby-input-iconbutton"
+                                title="Browse"><i class="md-icon">search</i></button>
+                        </div>
+                        <div class="fieldDescription">
+                            Folder where per-episode standalone NFO backups are stored, flat (no per-series
+                            subfolders). This is a plugin-owned file containing only a &lt;markers&gt; element -
+                            unrelated to Emby's own scraper-generated NFO next to the video.
+                        </div>
+                    </div>
+
                     <div class="fieldDescription">
-                        Folder where per-episode JSON backups are stored, flat (no per-series
-                        subfolders). Ignored if "Save JSON backup files to media folders" below is checked.
+                        Note: if both JSON and NFO are checked, the Backup task writes fresh data to both
+                        on every run. If both are checked for Restore below, the plugin uses whichever
+                        source has a value for each field (Intro/Credits handled independently), preferring
+                        the more recently written file when both sources have a value for the same field.
+                    </div>
+
+                    <div class="verticalSection">
+                        <h4>Restore:</h4>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkCustomRestoreJson" name="CustomRestoreJson" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically restore markers from JSON in selected folder.</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkCustomRestoreNfo" name="CustomRestoreNfo" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically restore markers from NFO in selected folder.</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            For both JSON and NFO manual-edit auto-backup: if enabled below, the plugin
+                            watches the Emby server log for signs of a manual marker correction made
+                            through ChapterApi, EmbyCredits, or Segment Reporting - none of these raise
+                            the update event "Automatically restore" below listens for, so without that
+                            setting, a manual correction is never backed up.
+                        </div>
                     </div>
                 </div>
 
-                <div class="checkboxContainer checkboxContainer-withDescription">
+                <!-- ======================= AUTOMATIC (MEDIA FOLDER) ======================= -->
+                <div class="checkboxContainer">
                     <label>
-                        <input id="chkSaveJsonToMediaFolder" name="SaveJsonToMediaFolder" type="checkbox" is="emby-checkbox" />
-                        <span>Save JSON backup files to media folders</span>
+                        <input id="chkModeAutomatic" name="ModeAutomatic" type="checkbox" is="emby-checkbox" />
+                        <span><strong>Automatic (Media Folder)</strong></span>
                     </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        If enabled, each episode's JSON backup is written next to its video file
-                        instead of the JSON backup path above.
+                </div>
+
+                <div id="automaticOptions">
+                    <div class="verticalSection">
+                        <h4>Backup:</h4>
                     </div>
-                </div>
+                    <p class="fieldDescription">
+                        If enabled, each episode's backup is written next to its video file, either as
+                        JSON or NFO.
+                    </p>
 
-                <div class="verticalSection">
-                    <h3>Media NFO integration</h3>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label>
-                        <input id="chkInsertIntoMediaNfo" name="InsertIntoMediaNfo" type="checkbox" is="emby-checkbox" />
-                        <span>Also insert markers into the media's existing NFO file</span>
-                    </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        On backup, adds a &lt;markers&gt; element (with the same schema the original
-                        commercial "Intros Backup/Restore" plugin used) directly into the NFO file
-                        Emby's own metadata scraper already writes next to each video - only if that
-                        file already exists; nothing is created from scratch. Everything else already
-                        in that NFO is preserved. On restore, this same &lt;markers&gt; element is
-                        also read as a fallback if no JSON backup is found for an episode - so
-                        existing backups made by the original commercial plugin can be restored
-                        directly, with no conversion step needed.
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoBackupJson" name="AutoBackupJson" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically back up as JSON, next to the video.</span>
+                        </label>
                     </div>
-                </div>
 
-                <div class="verticalSection">
-                    <h3>Auto-restore (experimental)</h3>
-                </div>
-
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label>
-                        <input id="chkEnableAutoRestore" name="EnableAutoRestore" type="checkbox" is="emby-checkbox" />
-                        <span>Automatically restore markers when they're wiped</span>
-                    </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        If enabled, the plugin watches for episode updates and immediately
-                        re-applies backed-up intro/credits markers whenever they're missing -
-                        whether that's from a Library Scan or a Refresh Metadata (both can wipe
-                        them; "Lock this item" only protects against Library Scan, not Refresh
-                        Metadata). Runs automatically in the background - no need to run the
-                        Restore task manually after library maintenance. Requires a JSON backup
-                        path (or media-NFO integration) to already be configured above. This is
-                        newer and less tested than the scheduled Restore task, so it's off by
-                        default.
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoBackupNfo" name="AutoBackupNfo" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically back up as NFO, by inserting into the video's existing NFO.</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            On backup, adds a &lt;markers&gt; element (with the same schema the original
+                            commercial "Intros Backup/Restore" plugin used) directly into the NFO file
+                            Emby's own metadata scraper already writes next to each video - only if that
+                            file already exists; nothing is created from scratch. Everything else already
+                            in that NFO is preserved. On restore, this same &lt;markers&gt; element is
+                            also read as a fallback if no JSON backup is found for an episode - so
+                            existing backups made by the original commercial plugin can be restored
+                            directly, with no conversion step needed.
+                        </div>
                     </div>
-                </div>
 
-                <div class="verticalSection">
-                    <h3>Auto-backup on manual edit (experimental)</h3>
-                </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoJsonSafetyCopy" name="AutoJsonSafetyCopy" type="checkbox" is="emby-checkbox" />
+                            <span>Make an extra backup into a selected folder as JSON.</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Independent of the two options above - a "just in case" extra copy in a
+                            folder of your choosing, on top of whatever's being written next to your
+                            videos. Restore never reads from this copy; it exists purely as insurance.
+                        </div>
+                    </div>
 
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label>
-                        <input id="chkAutoBackupOnManualEdit" name="AutoBackupOnManualEdit" type="checkbox" is="emby-checkbox" />
-                        <span>Automatically back up markers when manually edited</span>
-                    </label>
-                    <div class="fieldDescription checkboxFieldDescription">
-                        If enabled, the plugin watches the Emby server log for signs of a manual
-                        marker correction made through ChapterApi, EmbyCredits, or Segment
-                        Reporting - none of these raise the update event "Automatically restore"
-                        above listens for, so without this, a manual correction is never backed
-                        up. Also reacts to Emby's own native intro detection, which only knows
-                        about Intro markers: when it runs, this backs up the new intro and
-                        reapplies any existing credits marker so it isn't lost. Independent of
-                        "Automatically restore" above - either can be used without the other.
-                        Off by default.
+                    <div class="inputContainer" id="automaticJsonSafetyPathContainer" style="display:none;">
+                        <label class="inputLabel inputLabelUnfocused" for="txtAutomaticJsonSafetyPath">JSON safety copy folder</label>
+                        <div style="display:flex;align-items:center;gap:.5em;">
+                            <input id="txtAutomaticJsonSafetyPath" name="AutomaticJsonSafetyPath" type="text" is="emby-input" style="flex-grow:1;" />
+                            <button
+                                type="button"
+                                is="paper-icon-button-light"
+                                id="btnBrowseAutomaticJsonSafetyPath"
+                                class="emby-input-iconbutton"
+                                title="Browse"><i class="md-icon">search</i></button>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h4>Restore:</h4>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoRestoreNfo" name="AutoRestoreNfo" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically restore markers from NFO in media folders.</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoRestoreJson" name="AutoRestoreJson" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically restore markers from JSON in media folders.</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input id="chkAutoRestoreBest" name="AutoRestoreBest" type="checkbox" is="emby-checkbox" />
+                            <span>Let the plugin choose (suggested).</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Uses whichever source (NFO or JSON) has a value for each field (Intro/Credits
+                            handled independently), preferring the more recently written file when both
+                            sources have a value for the same field.
+                        </div>
+                    </div>
+
+                    <div class="fieldDescription">
+                        Note: in Automatic mode, the scheduled Backup/Restore tasks use media folders.
                     </div>
                 </div>
 

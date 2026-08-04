@@ -32,7 +32,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Restore Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Restore";
-        public string Description => "Restores intro/credits chapter markers from JSON/NFO files, either from the backup folder or next to the media.";
+        public string Description => "Restores intro/credits chapter markers from JSON/NFO, per the Custom or Automatic (Media Folder) settings.";
         public string Category => "Intro/Credits Backup & Restore (Open Source)";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -45,19 +45,12 @@ namespace IntrosBackupReplacement.ScheduledTasks
         public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
             var config = Plugin.Instance!.Configuration;
-            var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
-            var jsonPathUsable = jsonUsesMediaFolder || !string.IsNullOrWhiteSpace(config.JsonBackupPath);
+            var isCustom = config.BackupMode == BackupModeResolver.ModeCustom;
 
-            if (!jsonPathUsable && !config.InsertIntoMediaNfo)
+            if (isCustom && !config.CustomRestoreJson && !config.CustomRestoreNfo)
             {
-                _logger.Warn("No JSON backup path configured and 'Insert into media NFO' is off - nothing to restore from.");
+                _logger.Warn("Custom mode is selected but neither 'Restore from JSON' nor 'Restore from NFO' is checked - nothing to restore from.");
                 return Task.CompletedTask;
-            }
-
-            if (jsonPathUsable && !jsonUsesMediaFolder && !Directory.Exists(config.JsonBackupPath))
-            {
-                _logger.Warn("JsonBackupPath does not exist - JSON restore will be skipped, continuing with media-NFO restore only if enabled.");
-                jsonPathUsable = false;
             }
 
             var query = new InternalItemsQuery
@@ -130,71 +123,81 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 var episodeNumber = episode.IndexNumber ?? 0;
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
 
-                EpisodeIntroBackup? backup = null;
+                EpisodeIntroBackup? jsonBackup = null;
+                DateTime? jsonWriteTimeUtc = null;
+                EpisodeIntroBackup? nfoBackup = null;
+                DateTime? nfoWriteTimeUtc = null;
                 var foundFile = false;
                 var matchKind = string.Empty;
 
-                if (jsonPathUsable)
+                // JSON - resolves to JsonBackupPath (Custom) or the media
+                // folder (Automatic, if target includes Json/Best).
+                var jsonDir = BackupModeResolver.GetRestoreJsonDir(config, mediaFolder);
+                if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
                 {
-                    var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                    if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
+                    string? filePath = null;
+
+                    // 1. Match by TVDB ID + season + episode (content-based -
+                    // independent of filename, survives renames).
+                    if (!string.IsNullOrEmpty(tvdbId))
                     {
-                        string? filePath = null;
-
-                        // 1. Match by TVDB ID + season + episode (content-based -
-                        // independent of filename, survives renames).
-                        if (!string.IsNullOrEmpty(tvdbId))
+                        var index = GetOrBuildIndex(tvdbIndexCache, jsonDir, b => b.TvdbId);
+                        if (index.TryGetValue((tvdbId, seasonNumber, episodeNumber), out var match))
                         {
-                            var index = GetOrBuildIndex(tvdbIndexCache, jsonDir, b => b.TvdbId);
-                            if (index.TryGetValue((tvdbId, seasonNumber, episodeNumber), out var match))
-                            {
-                                filePath = match;
-                                matchKind = "tvdb";
-                            }
+                            filePath = match;
+                            matchKind = "tvdb";
                         }
+                    }
 
-                        // 2. Fall back to IMDB ID + season + episode, for content
-                        // that isn't in TheTVDB's database.
-                        if (filePath == null && !string.IsNullOrEmpty(imdbId))
+                    // 2. Fall back to IMDB ID + season + episode, for content
+                    // that isn't in TheTVDB's database.
+                    if (filePath == null && !string.IsNullOrEmpty(imdbId))
+                    {
+                        var index = GetOrBuildIndex(imdbIndexCache, jsonDir, b => b.ImdbId);
+                        if (index.TryGetValue((imdbId, seasonNumber, episodeNumber), out var match))
                         {
-                            var index = GetOrBuildIndex(imdbIndexCache, jsonDir, b => b.ImdbId);
-                            if (index.TryGetValue((imdbId, seasonNumber, episodeNumber), out var match))
-                            {
-                                filePath = match;
-                                matchKind = "imdb";
-                            }
+                            filePath = match;
+                            matchKind = "imdb";
                         }
+                    }
 
-                        // 3. Last resort: same filename as the video itself. No ID
-                        // needed at all here, but this breaks if the video file
-                        // gets renamed after the backup was written.
-                        if (filePath == null && !string.IsNullOrEmpty(episode.Path))
+                    // 3. Last resort: same filename as the video itself. No ID
+                    // needed at all here, but this breaks if the video file
+                    // gets renamed after the backup was written.
+                    if (filePath == null && !string.IsNullOrEmpty(episode.Path))
+                    {
+                        var candidate = Path.Combine(jsonDir, Path.ChangeExtension(Path.GetFileName(episode.Path), ".json"));
+                        if (File.Exists(candidate))
                         {
-                            var candidate = Path.Combine(jsonDir, Path.ChangeExtension(Path.GetFileName(episode.Path), ".json"));
-                            if (File.Exists(candidate))
-                            {
-                                filePath = candidate;
-                                matchKind = "path";
-                            }
+                            filePath = candidate;
+                            matchKind = "path";
                         }
+                    }
 
-                        if (filePath != null)
+                    if (filePath != null)
+                    {
+                        foundFile = true;
+                        try
                         {
-                            foundFile = true;
-                            try
-                            {
-                                var json = File.ReadAllText(filePath);
-                                backup = JsonSerializer.Deserialize<EpisodeIntroBackup>(json);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Error("Failed to parse backup file {0}: {1}", filePath, ex.Message);
-                            }
+                            jsonBackup = JsonSerializer.Deserialize<EpisodeIntroBackup>(File.ReadAllText(filePath));
+                            jsonWriteTimeUtc = File.GetLastWriteTimeUtc(filePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error("Failed to parse backup file {0}: {1}", filePath, ex.Message);
                         }
                     }
                 }
 
-                if (backup == null && config.InsertIntoMediaNfo && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
+                // NFO - Automatic mode reads the video's existing
+                // Emby-scraper NFO; Custom mode reads the plugin's own
+                // standalone NFO from NfoBackupPath. Checked independently of
+                // whether a JSON match was found - a JSON backup written
+                // before intro detection ran (Intro fields null) must not
+                // permanently block a more complete NFO from ever being
+                // consulted. The two are merged field-by-field below rather
+                // than JSON taking all-or-nothing priority.
+                if (BackupModeResolver.ShouldRestoreFromExistingNfo(config) && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
                 {
                     var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                     if (File.Exists(mediaNfoPath))
@@ -202,7 +205,8 @@ namespace IntrosBackupReplacement.ScheduledTasks
                         foundFile = true;
                         try
                         {
-                            backup = TryReadMarkersFromNfo(mediaNfoPath);
+                            nfoBackup = TryReadMarkersFromNfo(mediaNfoPath);
+                            nfoWriteTimeUtc = File.GetLastWriteTimeUtc(mediaNfoPath);
                         }
                         catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
                         {
@@ -210,6 +214,29 @@ namespace IntrosBackupReplacement.ScheduledTasks
                         }
                     }
                 }
+                else
+                {
+                    var customNfoDir = BackupModeResolver.GetCustomRestoreNfoDir(config);
+                    if (customNfoDir != null && !string.IsNullOrEmpty(episode.Path))
+                    {
+                        var standaloneNfoPath = StandaloneNfo.GetPath(customNfoDir, episode.Path);
+                        if (File.Exists(standaloneNfoPath))
+                        {
+                            foundFile = true;
+                            try
+                            {
+                                nfoBackup = StandaloneNfo.Read(standaloneNfoPath);
+                                nfoWriteTimeUtc = File.GetLastWriteTimeUtc(standaloneNfoPath);
+                            }
+                            catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+                            {
+                                _logger.Error("Failed to read standalone NFO {0}: {1}", standaloneNfoPath, ex.Message);
+                            }
+                        }
+                    }
+                }
+
+                var backup = EpisodeRestoreHelper.MergeSources(jsonBackup, jsonWriteTimeUtc, nfoBackup, nfoWriteTimeUtc);
 
                 if (backup == null)
                 {
@@ -279,13 +306,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
             var rawIntroEnd = ReadRaw("introend");
             var rawCreditsStart = ReadRaw("creditstart");
 
-            // introstart/introend are only treated as "not detected" when BOTH
-            // are zero/missing - a genuine intro starting at the very first
-            // frame (IntroStart == 0) is otherwise indistinguishable from "no
-            // intro" in the NFO, since the schema has no way to represent
-            // "absent" separately from zero. Checking the pair resolves this:
-            // if either field is non-zero, the intro is real and a
-            // IntroStart == 0 value is preserved rather than dropped.
             long? introStart = null;
             long? introEnd = null;
             if ((rawIntroStart ?? 0) != 0 || (rawIntroEnd ?? 0) != 0)
@@ -294,9 +314,6 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 introEnd = rawIntroEnd ?? 0;
             }
 
-            // CreditsStart == 0 isn't a realistic case (credits never start at
-            // the very first frame), so the original zero-means-absent rule
-            // stays as-is here.
             var creditsStart = (rawCreditsStart.HasValue && rawCreditsStart.Value != 0) ? rawCreditsStart : null;
 
             var backup = new EpisodeIntroBackup

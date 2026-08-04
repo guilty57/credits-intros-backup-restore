@@ -5,30 +5,75 @@ namespace IntrosBackupReplacement
     public class PluginConfiguration : BasePluginConfiguration
     {
         /// <summary>
+        /// Top-level mode, mutually exclusive: "Custom" (user-selected
+        /// folder(s)) or "AutomaticMediaFolder" (next to each video).
+        /// Controls both where the scheduled Backup/Restore tasks read and
+        /// write, and which folder ManualEditWatcher/AutoRestoreEntryPoint
+        /// target - those two keep running in either mode, just aimed at a
+        /// different location depending on this setting.
+        /// </summary>
+        public string BackupMode { get; set; } = "AutomaticMediaFolder";
+
+        // ------------------------------------------------------------------
+        // Custom mode
+        // ------------------------------------------------------------------
+
+        /// <summary>
         /// Folder where per-episode JSON backups are stored (flat, no
-        /// per-series subfolders). Ignored if SaveJsonToMediaFolder is true.
+        /// per-series subfolders). Custom mode only.
         /// </summary>
         public string JsonBackupPath { get; set; } = string.Empty;
 
         /// <summary>
-        /// If true, write each episode's JSON backup into its own media
-        /// folder (next to the video file) instead of JsonBackupPath.
-        /// Overrides JsonBackupPath.
+        /// Folder where per-episode standalone NFO backups are stored (flat).
+        /// This is a plugin-owned file containing only a &lt;markers&gt;
+        /// element - unrelated to Emby's own scraper-generated NFO next to
+        /// the video. Custom mode only. Can be the same folder as
+        /// JsonBackupPath or a different one.
         /// </summary>
-        public bool SaveJsonToMediaFolder { get; set; } = false;
+        public string NfoBackupPath { get; set; } = string.Empty;
+
+        /// <summary>Custom mode: write JSON to JsonBackupPath on Backup.</summary>
+        public bool CustomBackupJson { get; set; } = true;
+
+        /// <summary>Custom mode: write the standalone NFO to NfoBackupPath on Backup.</summary>
+        public bool CustomBackupNfo { get; set; } = false;
+
+        /// <summary>Custom mode: read JSON from JsonBackupPath on Restore.</summary>
+        public bool CustomRestoreJson { get; set; } = true;
+
+        /// <summary>Custom mode: read the standalone NFO from NfoBackupPath on Restore.</summary>
+        public bool CustomRestoreNfo { get; set; } = false;
+
+        // ------------------------------------------------------------------
+        // Automatic (Media Folder) mode
+        // ------------------------------------------------------------------
+
+        /// <summary>Automatic mode: write JSON next to the video on Backup. Independent of AutomaticBackupNfo - check both for what used to be "Both".</summary>
+        public bool AutomaticBackupJson { get; set; } = true;
+
+        /// <summary>Automatic mode: insert markers into the video's existing Emby-scraper NFO on Backup. Independent of AutomaticBackupJson.</summary>
+        public bool AutomaticBackupNfo { get; set; } = false;
 
         /// <summary>
-        /// If true, also insert/update a &lt;markers&gt; node directly inside
-        /// the media's own existing NFO file (named after the video itself,
-        /// e.g. "Episode Title.nfo" - not our own {Series} ({TvdbId})... file).
-        /// Only touches a file that already exists (typically written by the
-        /// NfoMetadata plugin) - never creates one from scratch. Uses the
-        /// same &lt;markers&gt;&lt;introstart&gt;/&lt;introend&gt;/&lt;creditstart&gt;
-        /// schema as the original commercial "Intros Backup/Restore" plugin,
-        /// for interoperability with existing backups made by it. This is in
-        /// addition to, not a replacement for, the JSON backup above.
+        /// Automatic mode only: in addition to whichever of the two options
+        /// above are selected, also write a plain JSON safety copy into
+        /// JsonBackupPath (the same field Custom mode's JSON option uses).
+        /// This is a "just in case" extra copy only - Restore never reads
+        /// from it, it exists purely as insurance.
         /// </summary>
-        public bool InsertIntoMediaNfo { get; set; } = false;
+        public bool AutomaticJsonSafetyCopy { get; set; } = false;
+
+        /// <summary>
+        /// Automatic mode Restore source, mutually exclusive: "Nfo", "Json",
+        /// or "Best" (field-level + newer-file-wins merge of both - the
+        /// suggested/default option).
+        /// </summary>
+        public string AutomaticRestoreSource { get; set; } = "Best";
+
+        // ------------------------------------------------------------------
+        // Shared - apply in both modes, just target a different folder
+        // ------------------------------------------------------------------
 
         /// <summary>
         /// If true, the plugin subscribes to Emby's item-updated event and

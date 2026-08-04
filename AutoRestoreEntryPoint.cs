@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Xml;
 using IntrosBackupReplacement.Models;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -104,87 +105,110 @@ namespace IntrosBackupReplacement
 
         private void ProcessEpisode(Episode episode, PluginConfiguration config)
         {
-            var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
-            var jsonPathUsable = jsonUsesMediaFolder || !string.IsNullOrWhiteSpace(config.JsonBackupPath);
-            if (!jsonPathUsable && !config.InsertIntoMediaNfo)
-            {
-                return;
-            }
-
             var tvdbId = episode.ProviderIds.GetValueOrDefault("Tvdb");
             var imdbId = episode.ProviderIds.GetValueOrDefault("Imdb");
             var seasonNumber = episode.ParentIndexNumber ?? 0;
             var episodeNumber = episode.IndexNumber ?? 0;
             var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
 
-            EpisodeIntroBackup? backup = null;
+            EpisodeIntroBackup? jsonBackup = null;
+            DateTime? jsonWriteTimeUtc = null;
+            EpisodeIntroBackup? nfoBackup = null;
+            DateTime? nfoWriteTimeUtc = null;
 
-            if (jsonPathUsable)
+            var jsonDir = BackupModeResolver.GetRestoreJsonDir(config, mediaFolder);
+            if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
             {
-                var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                if (!string.IsNullOrEmpty(jsonDir) && Directory.Exists(jsonDir))
+                string? filePath = null;
+
+                // 1. TVDB ID + season + episode (content-based).
+                if (!string.IsNullOrEmpty(tvdbId))
                 {
-                    string? filePath = null;
-
-                    // 1. TVDB ID + season + episode (content-based).
-                    if (!string.IsNullOrEmpty(tvdbId))
+                    var index = GetOrBuildIndex(jsonDir, b => b.TvdbId, tvdb: true);
+                    if (index.TryGetValue((tvdbId, seasonNumber, episodeNumber), out var match))
                     {
-                        var index = GetOrBuildIndex(jsonDir, b => b.TvdbId, tvdb: true);
-                        if (index.TryGetValue((tvdbId, seasonNumber, episodeNumber), out var match))
-                        {
-                            filePath = match;
-                        }
+                        filePath = match;
                     }
+                }
 
-                    // 2. IMDB ID + season + episode (content-based).
-                    if (filePath == null && !string.IsNullOrEmpty(imdbId))
+                // 2. IMDB ID + season + episode (content-based).
+                if (filePath == null && !string.IsNullOrEmpty(imdbId))
+                {
+                    var index = GetOrBuildIndex(jsonDir, b => b.ImdbId, tvdb: false);
+                    if (index.TryGetValue((imdbId, seasonNumber, episodeNumber), out var match))
                     {
-                        var index = GetOrBuildIndex(jsonDir, b => b.ImdbId, tvdb: false);
-                        if (index.TryGetValue((imdbId, seasonNumber, episodeNumber), out var match))
-                        {
-                            filePath = match;
-                        }
+                        filePath = match;
                     }
+                }
 
-                    // 3. Last resort: same filename as the video itself.
-                    if (filePath == null && !string.IsNullOrEmpty(episode.Path))
+                // 3. Last resort: same filename as the video itself.
+                if (filePath == null && !string.IsNullOrEmpty(episode.Path))
+                {
+                    var candidate = Path.Combine(jsonDir, Path.ChangeExtension(Path.GetFileName(episode.Path), ".json"));
+                    if (File.Exists(candidate))
                     {
-                        var candidate = Path.Combine(jsonDir, Path.ChangeExtension(Path.GetFileName(episode.Path), ".json"));
-                        if (File.Exists(candidate))
-                        {
-                            filePath = candidate;
-                        }
+                        filePath = candidate;
                     }
+                }
 
-                    if (filePath != null)
+                if (filePath != null)
+                {
+                    try
                     {
-                        try
-                        {
-                            backup = JsonSerializer.Deserialize<EpisodeIntroBackup>(File.ReadAllText(filePath));
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.Error("Auto-restore: failed to parse {0}: {1}", filePath, ex.Message);
-                        }
+                        jsonBackup = JsonSerializer.Deserialize<EpisodeIntroBackup>(File.ReadAllText(filePath));
+                        jsonWriteTimeUtc = File.GetLastWriteTimeUtc(filePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error("Auto-restore: failed to parse {0}: {1}", filePath, ex.Message);
                     }
                 }
             }
 
-            if (backup == null && config.InsertIntoMediaNfo && !string.IsNullOrEmpty(episode.Path))
+            // NFO - Automatic mode reads the video's existing Emby-scraper
+            // NFO; Custom mode reads the plugin's own standalone NFO.
+            // Checked independently of whether a JSON match was found - a
+            // JSON backup written before intro detection ran (Intro fields
+            // null) must not permanently block a more complete NFO from ever
+            // being consulted. The two are merged field-by-field below
+            // rather than JSON taking all-or-nothing priority.
+            if (BackupModeResolver.ShouldRestoreFromExistingNfo(config) && !string.IsNullOrEmpty(episode.Path))
             {
                 var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                 if (File.Exists(mediaNfoPath))
                 {
                     try
                     {
-                        backup = TryReadMarkersFromNfo(mediaNfoPath);
+                        nfoBackup = ReadExistingNfoWithRetry(mediaNfoPath, out nfoWriteTimeUtc);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                     {
                         _logger.Error("Auto-restore: failed to read markers from {0}: {1}", mediaNfoPath, ex.Message);
                     }
                 }
             }
+            else
+            {
+                var customNfoDir = BackupModeResolver.GetCustomRestoreNfoDir(config);
+                if (customNfoDir != null && !string.IsNullOrEmpty(episode.Path))
+                {
+                    var standaloneNfoPath = StandaloneNfo.GetPath(customNfoDir, episode.Path);
+                    if (File.Exists(standaloneNfoPath))
+                    {
+                        try
+                        {
+                            nfoBackup = StandaloneNfo.Read(standaloneNfoPath);
+                            nfoWriteTimeUtc = File.GetLastWriteTimeUtc(standaloneNfoPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error("Auto-restore: failed to read standalone NFO {0}: {1}", standaloneNfoPath, ex.Message);
+                        }
+                    }
+                }
+            }
+
+            var backup = EpisodeRestoreHelper.MergeSources(jsonBackup, jsonWriteTimeUtc, nfoBackup, nfoWriteTimeUtc);
 
             if (backup == null)
             {
@@ -247,6 +271,48 @@ namespace IntrosBackupReplacement
                 _indexCache[dir] = (DateTime.UtcNow, tvdbIndex, imdbIndex);
                 return tvdb ? tvdbIndex : imdbIndex;
             }
+        }
+
+        /// <summary>
+        /// Reads the video's existing NFO, retrying a couple of times on a
+        /// transient XmlException before giving up. Emby's own NfoMetadata
+        /// scraper isn't guaranteed to write the file atomically - during a
+        /// Refresh Metadata it can briefly leave the file empty/partial
+        /// while it's being rewritten, and if our event handler happens to
+        /// read at that exact moment, XmlDocument.Load sees an empty file
+        /// ("Root element is missing") even though the file is fine a
+        /// fraction of a second later. That's a timing race, not a real
+        /// error, so it's worth a couple of short retries instead of
+        /// treating the first attempt as final and silently losing the
+        /// restore for this event.
+        /// </summary>
+        private EpisodeIntroBackup? ReadExistingNfoWithRetry(string nfoPath, out DateTime? writeTimeUtc)
+        {
+            const int maxAttempts = 3;
+            const int retryDelayMs = 300;
+            XmlException? lastError = null;
+
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    var result = TryReadMarkersFromNfo(nfoPath);
+                    writeTimeUtc = File.GetLastWriteTimeUtc(nfoPath);
+                    return result;
+                }
+                catch (XmlException ex)
+                {
+                    lastError = ex;
+                    if (attempt < maxAttempts)
+                    {
+                        Thread.Sleep(retryDelayMs);
+                    }
+                }
+            }
+
+            _logger.Error("Auto-restore: failed to read markers from {0} after {1} attempts (likely a scraper write race): {2}", nfoPath, maxAttempts, lastError?.Message);
+            writeTimeUtc = null;
+            return null;
         }
 
         private static EpisodeIntroBackup? TryReadMarkersFromNfo(string nfoPath)

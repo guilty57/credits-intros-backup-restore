@@ -33,7 +33,7 @@ namespace IntrosBackupReplacement.ScheduledTasks
 
         public string Name => "Backup Intro/Credits Markers";
         public string Key => "IntrosBackupReplacement_Backup";
-        public string Description => "Writes each episode's intro/credits chapter markers to a JSON file, either in the backup folder or next to the media.";
+        public string Description => "Writes each episode's intro/credits chapter markers to JSON and/or NFO, per the Custom or Automatic (Media Folder) settings.";
         public string Category => "Intro/Credits Backup & Restore (Open Source)";
 
         public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -48,29 +48,65 @@ namespace IntrosBackupReplacement.ScheduledTasks
         public Task Execute(CancellationToken cancellationToken, IProgress<double> progress)
         {
             var config = Plugin.Instance!.Configuration;
+            var isCustom = config.BackupMode == BackupModeResolver.ModeCustom;
 
-            var jsonUsesMediaFolder = config.SaveJsonToMediaFolder;
-
-            if (!jsonUsesMediaFolder && string.IsNullOrWhiteSpace(config.JsonBackupPath))
+            // Pre-flight: only relevant for Custom mode's fixed folders (a
+            // media folder is per-episode and doesn't exist ahead of time).
+            if (isCustom)
             {
-                _logger.Warn("JsonBackupPath is not configured and 'Save JSON to media folders' is off - skipping backup.");
-                return Task.CompletedTask;
-            }
-
-            try
-            {
-                if (!jsonUsesMediaFolder)
+                try
                 {
-                    Directory.CreateDirectory(config.JsonBackupPath);
-                    ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
+                    if (config.CustomBackupJson && !string.IsNullOrWhiteSpace(config.JsonBackupPath))
+                    {
+                        Directory.CreateDirectory(config.JsonBackupPath);
+                        ArchiveAndClearExisting(config.JsonBackupPath, "*.json");
+                    }
+
+                    if (config.CustomBackupNfo && !string.IsNullOrWhiteSpace(config.NfoBackupPath))
+                    {
+                        Directory.CreateDirectory(config.NfoBackupPath);
+                        ArchiveAndClearExisting(config.NfoBackupPath, "*.nfo");
+                    }
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    _logger.Error(
+                        "Cannot access the configured backup folder - check that the account Emby runs as has write "
+                        + "permission there (see the README's Permissions section). Backup aborted. Error: {0}", ex.Message);
+                    return Task.CompletedTask;
+                }
+
+                if (!config.CustomBackupJson && !config.CustomBackupNfo)
+                {
+                    _logger.Warn("Custom mode is selected but neither 'Backup as JSON' nor 'Backup as NFO' is checked - nothing to do.");
+                    return Task.CompletedTask;
                 }
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            else if (!config.AutomaticBackupJson && !config.AutomaticBackupNfo && !config.AutomaticJsonSafetyCopy)
             {
-                _logger.Error(
-                    "Cannot access the configured backup folder - check that the account Emby runs as has write "
-                    + "permission there (see the README's Permissions section). Backup aborted. Error: {0}", ex.Message);
+                _logger.Warn("Automatic (Media Folder) mode is selected but nothing is checked - nothing to do.");
                 return Task.CompletedTask;
+            }
+
+            // Automatic mode's safety copy also writes into a fixed folder
+            // (unlike the per-episode media-folder writes), so it gets the
+            // same archive-before-overwrite treatment Custom mode's central
+            // folders get, instead of silently overwriting with no history.
+            var safetyCopyPreflightDir = BackupModeResolver.GetAutomaticJsonSafetyCopyDir(config);
+            if (safetyCopyPreflightDir != null)
+            {
+                try
+                {
+                    Directory.CreateDirectory(safetyCopyPreflightDir);
+                    ArchiveAndClearExisting(safetyCopyPreflightDir, "*.json");
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    _logger.Error(
+                        "Cannot access the JSON safety copy folder - check that the account Emby runs as has write "
+                        + "permission there. Backup aborted. Error: {0}", ex.Message);
+                    return Task.CompletedTask;
+                }
             }
 
             var query = new InternalItemsQuery
@@ -118,10 +154,15 @@ namespace IntrosBackupReplacement.ScheduledTasks
                 var mediaFolder = string.IsNullOrEmpty(episode.Path) ? null : Path.GetDirectoryName(episode.Path);
                 var fileName = BuildFileName(backup);
 
-                var jsonDir = jsonUsesMediaFolder ? mediaFolder : config.JsonBackupPath;
-                if (string.IsNullOrEmpty(jsonDir))
+                // JSON (Custom -> JsonBackupPath if CustomBackupJson, or
+                // Automatic -> media folder if target is Json/Both).
+                var jsonDir = BackupModeResolver.GetBackupJsonDir(config, mediaFolder);
+                if (jsonDir == null)
                 {
-                    _logger.Warn("Skipping {0} - could not determine a media folder for its JSON backup.", fileName);
+                    if (isCustom ? config.CustomBackupJson : config.AutomaticBackupJson)
+                    {
+                        _logger.Warn("Skipping JSON backup for {0} - could not determine a target folder.", fileName);
+                    }
                 }
                 else
                 {
@@ -144,7 +185,9 @@ namespace IntrosBackupReplacement.ScheduledTasks
                     }
                 }
 
-                if (config.InsertIntoMediaNfo && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
+                // Automatic mode: insert into the video's own existing
+                // Emby-scraper NFO.
+                if (BackupModeResolver.ShouldBackupIntoExistingNfo(config) && mediaFolder != null && !string.IsNullOrEmpty(episode.Path))
                 {
                     var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                     if (!File.Exists(mediaNfoPath))
@@ -162,6 +205,46 @@ namespace IntrosBackupReplacement.ScheduledTasks
                             failedWrites++;
                             _logger.Error("Failed to insert markers into existing NFO {0}: {1}", mediaNfoPath, ex.Message);
                         }
+                    }
+                }
+
+                // Custom mode: standalone, plugin-owned NFO file.
+                var customNfoDir = BackupModeResolver.GetCustomBackupNfoDir(config);
+                if (customNfoDir != null && !string.IsNullOrEmpty(episode.Path))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(customNfoDir);
+                        var standaloneNfoPath = StandaloneNfo.GetPath(customNfoDir, episode.Path);
+                        StandaloneNfo.Write(standaloneNfoPath, backup);
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or XmlException)
+                    {
+                        failedWrites++;
+                        _logger.Error("Failed to write standalone NFO backup for {0} to {1}: {2}", fileName, customNfoDir, ex.Message);
+                    }
+                }
+
+                // Automatic mode only: extra "just in case" JSON safety copy
+                // in a selected folder, independent of whatever the two
+                // options above are doing. Restore never reads from here -
+                // this is insurance only, same filename-as-video convention
+                // as everywhere else.
+                var safetyCopyDir = BackupModeResolver.GetAutomaticJsonSafetyCopyDir(config);
+                if (safetyCopyDir != null && !string.IsNullOrEmpty(episode.Path))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(safetyCopyDir);
+                        var safetyFileName = Path.ChangeExtension(Path.GetFileName(episode.Path), ".json");
+                        var safetyPath = Path.Combine(safetyCopyDir, safetyFileName);
+                        var safetyJson = JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true });
+                        File.WriteAllText(safetyPath, safetyJson);
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                    {
+                        failedWrites++;
+                        _logger.Error("Failed to write JSON safety copy for {0} to {1}: {2}", fileName, safetyCopyDir, ex.Message);
                     }
                 }
             }

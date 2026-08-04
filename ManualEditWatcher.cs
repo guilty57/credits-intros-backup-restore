@@ -341,7 +341,7 @@ namespace IntrosBackupReplacement
             }
 
             var mediaFolder = Path.GetDirectoryName(episode.Path);
-            var jsonDir = config.SaveJsonToMediaFolder ? mediaFolder : config.JsonBackupPath;
+            var jsonDir = BackupModeResolver.GetBackupJsonDir(config, mediaFolder);
             if (string.IsNullOrEmpty(jsonDir))
             {
                 return null;
@@ -367,7 +367,7 @@ namespace IntrosBackupReplacement
                 }
             }
 
-            if (config.InsertIntoMediaNfo && !string.IsNullOrEmpty(episode.Path))
+            if (BackupModeResolver.ShouldBackupIntoExistingNfo(config) && !string.IsNullOrEmpty(episode.Path))
             {
                 var mediaNfoPath = Path.ChangeExtension(episode.Path, ".nfo");
                 if (File.Exists(mediaNfoPath))
@@ -380,6 +380,21 @@ namespace IntrosBackupReplacement
                     {
                         _logger.Error("Failed to insert markers into NFO {0}: {1}", mediaNfoPath, ex.Message);
                     }
+                }
+            }
+
+            var customNfoDir = BackupModeResolver.GetCustomBackupNfoDir(config);
+            if (customNfoDir != null && !string.IsNullOrEmpty(episode.Path))
+            {
+                try
+                {
+                    Directory.CreateDirectory(customNfoDir);
+                    var standaloneNfoPath = StandaloneNfo.GetPath(customNfoDir, episode.Path);
+                    StandaloneNfo.Write(standaloneNfoPath, backup);
+                }
+                catch (Exception ex) when (ex is XmlException or IOException or UnauthorizedAccessException)
+                {
+                    _logger.Error("Failed to write standalone NFO for {0}: {1}", episode.Path, ex.Message);
                 }
             }
         }
