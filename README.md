@@ -49,8 +49,10 @@ clients even when Emby itself runs on Linux.
 - An Emby Server install (developed and tested against **4.10.0.18**; should
   work on nearby 4.10.x versions, but the three reference DLLs below must
   match your server's version).
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build the
-  plugin (or Docker, see below).
+- [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) or
+  [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build the
+  plugin (or Docker, see below). The plugin targets both runtimes — pick
+  whichever your system has.
 
 ## Building
 
@@ -85,10 +87,36 @@ No local .NET SDK? Build with Docker instead:
 docker run --rm -v "$(pwd)":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet build -c Release
 ```
 
+The build produces two DLLs — one per target framework:
+
+```
+bin/Release/net6.0/IntrosBackupReplacement.dll
+bin/Release/net8.0/IntrosBackupReplacement.dll
+```
+
+Use the one that matches the runtime available on your Emby host.
+When creating a GitHub Release, attach both as separate assets named
+`IntrosBackupReplacement-net6.0.dll` and `IntrosBackupReplacement-net8.0.dll`.
+
 ## Installing
 
-1. Copy the built `IntrosBackupReplacement.dll` (from `bin/Release/net8.0/`)
-   into Emby's plugin folder. On a Synology Package Center install:
+### Downloading a pre-built release
+
+GitHub Releases include two DLL assets — pick the one that matches your
+system's .NET runtime:
+
+| File | Use when |
+|---|---|
+| `IntrosBackupReplacement-net8.0.dll` | Your system has .NET 8 (recommended) |
+| `IntrosBackupReplacement-net6.0.dll` | Your system only has .NET 6 |
+
+Rename the downloaded file to `IntrosBackupReplacement.dll` before copying
+it to the plugin folder.
+
+### Installing
+
+1. Copy `IntrosBackupReplacement.dll` into Emby's plugin folder.
+   On a Synology Package Center install:
    ```
    /var/packages/EmbyServer/var/plugins/
    ```
